@@ -123,6 +123,140 @@ void CBudgetManager::CheckOrphanVotes()
     LogPrint("masternode","CBudgetManager::CheckOrphanVotes - Done\n");
 }
 
+
+
+void CBudgetManager::PayoutResults()
+{
+    static int nSubmittedHeight = 0; // height at which final budget was submitted last time
+    int nCurrentHeight;
+
+    {
+        TRY_LOCK(cs_main, locked);
+        if (!locked) return;
+        if (!chainActive.Tip()) return;
+        nCurrentHeight = chainActive.Height();
+    }
+
+    int nBlockStart = nCurrentHeight - nCurrentHeight % GetBudgetPaymentCycleBlocks() + GetBudgetPaymentCycleBlocks();
+    if (nSubmittedHeight >= nBlockStart){
+        LogPrint("masternode","CBudgetManager::PayoutResults - nSubmittedHeight(=%ld) < nBlockStart(=%ld) condition not fulfilled.\n", nSubmittedHeight, nBlockStart);
+        return;
+    }
+    // Submit final budget during the last 2 days before payment for Mainnet, about 9 minutes for Testnet
+    //change these details to be once every 3 days
+    int nFinalizationStart = nBlockStart - ((GetBudgetPaymentCycleBlocks() / 30) * 2);
+    int nOffsetToStart = nFinalizationStart - nCurrentHeight;
+
+    if (nBlockStart - nCurrentHeight > ((GetBudgetPaymentCycleBlocks() / 30) * 2)){
+        LogPrint("masternode","CBudgetManager::PayoutResults - Too early for finalization. Current block is %ld, next Superblock is %ld.\n", nCurrentHeight, nBlockStart);
+        LogPrint("masternode","CBudgetManager::PayoutResults - First possible block for finalization: %ld. Last possible block for finalization: %ld. You have to wait for %ld block(s) until Budget finalization will be possible\n", nFinalizationStart, nBlockStart, nOffsetToStart);
+
+        return;
+    }
+
+
+
+
+    std::vector<CBudgetProposal*> vBetPayouts = budget.GetBets();
+    std::string strBudgetName = "main bets payout";
+    std::vector<CTxBudgetPayment> vecTxBetPayments;
+
+    //loop through all the bets and add the relevent details to the payouts array
+    for (unsigned int i = 0; i < vBetPayouts.size(); i++) {
+        CTxBudgetPayment txBudgetPayment;
+        txBudgetPayment.nProposalHash = vBetPayouts[i]->GetHash();
+        txBudgetPayment.payee = vBetPayouts[i]->GetPayee();
+        txBudgetPayment.nAmount = vBetPayouts[i]->GetAllotted();
+        vecTxBetPayments.push_back(txBudgetPayment);
+    }
+
+
+
+
+
+
+
+    if (vecTxBudgetPayments.size() < 1) {
+        LogPrint("masternode","CBudgetManager::PayoutResults - Found No Bet Payouts For Period\n");
+        return;
+    }
+
+    CFinalizedBudgetBroadcast tempBudget(strBudgetName, nBlockStart, vecTxBudgetPayments, 0);
+    if (mapSeenFinalizedBudgets.count(tempBudget.GetHash())) {
+        LogPrint("masternode","CBudgetManager::PayoutResults - Budget already exists - %s\n", tempBudget.GetHash().ToString());
+        nSubmittedHeight = nCurrentHeight;
+        return; //already exists
+    }
+
+    //create fee tx
+    CTransaction tx;
+    uint256 txidCollateral;
+
+    if (!mapCollateralTxids.count(tempBudget.GetHash())) {
+        CWalletTx wtx;
+        if (!pwalletMain->GetBudgetSystemCollateralTX(wtx, tempBudget.GetHash(), false)) {
+            LogPrint("masternode","CBudgetManager::PayoutResults - Can't make collateral transaction\n");
+            return;
+        }
+
+        // Get our change address
+        CReserveKey reservekey(pwalletMain);
+        // Send the tx to the network. Do NOT use SwiftTx, locking might need too much time to propagate, especially for testnet
+        pwalletMain->CommitTransaction(wtx, reservekey, "NO-ix");
+        tx = (CTransaction)wtx;
+        txidCollateral = tx.GetHash();
+        mapCollateralTxids.insert(make_pair(tempBudget.GetHash(), txidCollateral));
+    } else {
+        txidCollateral = mapCollateralTxids[tempBudget.GetHash()];
+    }
+
+    int conf = GetIXConfirmations(txidCollateral);
+    CTransaction txCollateral;
+    uint256 nBlockHash;
+
+    if (!GetTransaction(txidCollateral, txCollateral, nBlockHash, true)) {
+        LogPrint("masternode","CBudgetManager::PayoutResults - Can't find collateral tx %s", txidCollateral.ToString());
+        return;
+    }
+
+    if (nBlockHash != uint256(0)) {
+        BlockMap::iterator mi = mapBlockIndex.find(nBlockHash);
+        if (mi != mapBlockIndex.end() && (*mi).second) {
+            CBlockIndex* pindex = (*mi).second;
+            if (chainActive.Contains(pindex)) {
+                conf += chainActive.Height() - pindex->nHeight + 1;
+            }
+        }
+    }
+
+    /*
+        Wait will we have 1 extra confirmation, otherwise some clients might reject this feeTX
+        -- This function is tied to NewBlock, so we will propagate this budget while the block is also propagating
+    */
+    if (conf < Params().Budget_Fee_Confirmations() + 1) {
+        LogPrint("masternode","CBudgetManager::PayoutResults - Collateral requires at least %d confirmations - %s - %d confirmations\n", Params().Budget_Fee_Confirmations() + 1, txidCollateral.ToString(), conf);
+        return;
+    }
+
+    //create the proposal incase we're the first to make it
+    CFinalizedBudgetBroadcast finalizedBudgetBroadcast(strBudgetName, nBlockStart, vecTxBudgetPayments, txidCollateral);
+
+    std::string strError = "";
+    if (!finalizedBudgetBroadcast.IsValid(strError)) {
+        LogPrint("masternode","CBudgetManager::PayoutResults - Invalid finalized budget - %s \n", strError);
+        return;
+    }
+
+    LOCK(cs);
+    mapSeenFinalizedBudgets.insert(make_pair(finalizedBudgetBroadcast.GetHash(), finalizedBudgetBroadcast));
+    finalizedBudgetBroadcast.Relay();
+    budget.AddFinalizedBudget(finalizedBudgetBroadcast);
+    nSubmittedHeight = nCurrentHeight;
+    LogPrint("masternode","CBudgetManager::PayoutResults - Done! %s\n", finalizedBudgetBroadcast.GetHash().ToString());
+}
+
+
+
 void CBudgetManager::SubmitFinalBudget()
 {
     static int nSubmittedHeight = 0; // height at which final budget was submitted last time
@@ -767,6 +901,17 @@ std::vector<CBudgetProposal*> CBudgetManager::GetBudget()
     return vBudgetProposalsRet;
 }
 
+//Gets the bets that are ready to be paid out
+std::vector<CBudgetProposal*> CBudgetManager::GetBets()
+{
+    LOCK(cs);
+
+    std::vector<CBudgetProposal*> vBudgetProposalsRet;
+
+
+    return vBudgetProposalsRet;
+}
+
 struct sortFinalizedBudgetsByVotes {
     bool operator()(const std::pair<CFinalizedBudget*, int>& left, const std::pair<CFinalizedBudget*, int>& right)
     {
@@ -885,6 +1030,11 @@ void CBudgetManager::NewBlock()
     if (strBudgetMode == "suggest") { //suggest the budget we see
         SubmitFinalBudget();
     }
+
+    //check if the results are able to be paid out
+    LogPrint("masternode","::NewBlock - PAYOUT BET RESULTS KICKING OFF !!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"); 
+    LogPrintf("masternode","::NewBlock - PAYOUT BET RESULTS KICKING OFF !!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    // PayoutResults()
 
     //this function should be called 1/14 blocks, allowing up to 100 votes per day on all proposals
     if (chainActive.Height() % 14 != 0) return;
