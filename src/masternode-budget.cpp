@@ -176,12 +176,12 @@ void CBudgetManager::PayoutResults()
 
 
 
-    if (vecTxBudgetPayments.size() < 1) {
+    if (vecTxBetPayments.size() < 1) {
         LogPrint("masternode","CBudgetManager::PayoutResults - Found No Bet Payouts For Period\n");
         return;
     }
 
-    CFinalizedBudgetBroadcast tempBudget(strBudgetName, nBlockStart, vecTxBudgetPayments, 0);
+    CFinalizedBudgetBroadcast tempBudget(strBudgetName, nBlockStart, vecTxBetPayments, 0);
     if (mapSeenFinalizedBudgets.count(tempBudget.GetHash())) {
         LogPrint("masternode","CBudgetManager::PayoutResults - Budget already exists - %s\n", tempBudget.GetHash().ToString());
         nSubmittedHeight = nCurrentHeight;
@@ -239,7 +239,7 @@ void CBudgetManager::PayoutResults()
     }
 
     //create the proposal incase we're the first to make it
-    CFinalizedBudgetBroadcast finalizedBudgetBroadcast(strBudgetName, nBlockStart, vecTxBudgetPayments, txidCollateral);
+    CFinalizedBudgetBroadcast finalizedBudgetBroadcast(strBudgetName, nBlockStart, vecTxBetPayments, txidCollateral);
 
     std::string strError = "";
     if (!finalizedBudgetBroadcast.IsValid(strError)) {
