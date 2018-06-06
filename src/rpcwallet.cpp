@@ -211,6 +211,117 @@ UniValue placebet(const UniValue& params, bool fHelp)
     return wtx.GetHash().GetHex();
 }
 
+// TODO There is a lot of code shared between `listbets` and `listtransactions`.
+// This would ideally be abstracted when time allows.
+UniValue listbets(const UniValue& params, bool fHelp)
+{
+    // TODO The command-line parameters for this command aren't handled as
+    // described, either the documentation or the behaviour of this command
+    // should be corrected when time allows.
+
+    if (fHelp || params.size() > 4)
+        throw runtime_error(
+            "listtransactions ( \"account\" count from includeWatchonly)\n"
+            "\nReturns up to 'count' most recent transactions skipping the first 'from' transactions for account 'account'.\n"
+            "\nArguments:\n"
+            "1. \"account\"    (string, optional) The account name. If not included, it will list all transactions for all accounts.\n"
+            "                                     If \"\" is set, it will list transactions for the default account.\n"
+            "2. count          (numeric, optional, default=10) The number of transactions to return\n"
+            "3. from           (numeric, optional, default=0) The number of transactions to skip\n"
+            "4. includeWatchonly (bool, optional, default=false) Include transactions to watchonly addresses (see 'importaddress')\n"
+            "\nResult:\n"
+            "[\n"
+            "  {\n"
+            "    \"event-id\":\"accountname\",       (string) The ID of the event being bet on.\n"
+            "    \"team-to-win\":\"wagerraddress\",  (string) The team to win.\n"
+            "    \"amount\": x.xxx,                  (numeric) The amount bet in WGR.\n"
+            "  }\n"
+            "]\n"
+
+            "\nExamples:\n"
+            "\nList the most recent 10 bets in the systems\n" +
+            HelpExampleCli("listbets", ""));
+
+    string strAccount = "*";
+    if (params.size() > 0)
+        strAccount = params[0].get_str();
+    int nCount = 10;
+    if (params.size() > 1)
+        nCount = params[1].get_int();
+    int nFrom = 0;
+    if (params.size() > 2)
+        nFrom = params[2].get_int();
+    isminefilter filter = ISMINE_SPENDABLE;
+    if (params.size() > 3)
+        if (params[3].get_bool())
+            filter = filter | ISMINE_WATCH_ONLY;
+
+    if (nCount < 0)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Negative count");
+    if (nFrom < 0)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Negative from");
+
+    UniValue ret(UniValue::VARR);
+
+    const CWallet::TxItems & txOrdered = pwalletMain->wtxOrdered;
+
+    // iterate backwards until we have nCount items to return:
+    for (CWallet::TxItems::const_reverse_iterator it = txOrdered.rbegin(); it != txOrdered.rend(); ++it) {
+        CWalletTx* const pwtx = (*it).second.first;
+        if (pwtx != 0) {
+            for (unsigned int i = 0; i < (*pwtx).vout.size(); i++) {
+                const CTxOut& txout = (*pwtx).vout[i];
+                std::string s = txout.scriptPubKey.ToString();
+                if (s.length() > 0) {
+                    // TODO Remove hard-coded values from this block.
+                    if (0 == strncmp(s.c_str(), "OP_RETURN", 9)) {
+                        vector<unsigned char> v = ParseHex(s.substr(9, string::npos));
+                        std::string betDescr(v.begin(), v.end());
+                        std::vector<std::string> strs;
+                        boost::split(strs, betDescr, boost::is_any_of("|"));
+
+                        if (strs.size() != 3 || strs[0] != "2") {
+                            continue;
+                        }
+
+                        UniValue entry(UniValue::VOBJ);
+                        entry.push_back(Pair("event-id", strs[1]));
+                        entry.push_back(Pair("team-to-win", strs[2]));
+                        entry.push_back(Pair("amount", ValueFromAmount(txout.nValue)));
+                        ret.push_back(entry);
+                    }
+                }
+            }
+        }
+
+        if ((int)ret.size() >= (nCount + nFrom)) break;
+    }
+    // ret is newest to oldest
+
+    if (nFrom > (int)ret.size())
+        nFrom = ret.size();
+    if ((nFrom + nCount) > (int)ret.size())
+        nCount = ret.size() - nFrom;
+
+    vector<UniValue> arrTmp = ret.getValues();
+
+    vector<UniValue>::iterator first = arrTmp.begin();
+    std::advance(first, nFrom);
+    vector<UniValue>::iterator last = arrTmp.begin();
+    std::advance(last, nFrom+nCount);
+
+    if (last != arrTmp.end()) arrTmp.erase(last, arrTmp.end());
+    if (first != arrTmp.begin()) arrTmp.erase(arrTmp.begin(), first);
+
+    std::reverse(arrTmp.begin(), arrTmp.end()); // Return oldest to newest
+
+    ret.clear();
+    ret.setArray();
+    ret.push_backV(arrTmp);
+
+    return ret;
+}
+
 int64_t nWalletUnlockTime;
 static CCriticalSection cs_nWalletUnlockTime;
 
