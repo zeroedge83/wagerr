@@ -160,6 +160,57 @@ UniValue listevents(const UniValue& params, bool fHelp)
     return ret;
 }
 
+UniValue placebet(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 3 || params.size() > 5)
+        throw runtime_error(
+            "placebet \"event-id\" \"team\" amount ( \"comment\" \"comment-to\" )\n"
+            "\nPlace an amount as a bet on an event. The amount is a real and is rounded to the nearest 0.00000001\n" +
+            HelpRequiringPassphrase() +
+            "\nArguments:\n"
+            "1. \"event-id\"    (string, required) The event to bet on.\n"
+            "2. \"team\"        (string, required) The team to win.\n"
+            "3. \"amount\"      (numeric, required) The amount in wgr to send. eg 0.1\n"
+            "3. \"comment\"     (string, optional) A comment used to store what the transaction is for. \n"
+            "                             This is not part of the transaction, just kept in your wallet.\n"
+            "4. \"comment-to\"  (string, optional) A comment to store the name of the person or organization \n"
+            "                             to which you're sending the transaction. This is not part of the \n"
+            "                             transaction, just kept in your wallet.\n"
+            "\nResult:\n"
+            "\"transactionid\"  (string) The transaction id.\n"
+            "\nExamples:\n" +
+            HelpExampleCli("placebet", "\"1h34\" \"RUS\" 0.1 \"donation\" \"seans outpost\"") +
+            HelpExampleRpc("placebet", "\"1h34\", \"RUS\", 0.1, \"donation\", \"seans outpost\""));
+
+    // Amount
+    CAmount nAmount = AmountFromValue(params[2]);
+
+    // Wallet comments
+    CWalletTx wtx;
+    if (params.size() > 3 && !params[3].isNull() && !params[3].get_str().empty())
+        wtx.mapValue["comment"] = params[3].get_str();
+    if (params.size() > 4 && !params[4].isNull() && !params[4].get_str().empty())
+        wtx.mapValue["to"] = params[4].get_str();
+
+    EnsureWalletIsUnlocked();
+
+    CBitcoinAddress address("");
+    std::string eventId = params[0].get_str();
+    std::string team = params[1].get_str();
+
+    // TODO `address` isn't used when adding the following transaction to the
+    // blockchain, so ideally it would not need to be supplied to `SendMoney`.
+    // Ideally an alternative function, such as `BurnMoney`, would be developed
+    // and used, which would take the `OP_RETURN` value in place of the address
+    // value.
+    // Note that, during testing, the `opReturn` value is added to the
+    // blockchain incorrectly if its length is less than 5. This behaviour would
+    // ideally be investigated and corrected/justified when time allows.
+    SendMoney(address.Get(), nAmount, wtx, false, "2|" + eventId + "|" + team);
+
+    return wtx.GetHash().GetHex();
+}
+
 int64_t nWalletUnlockTime;
 static CCriticalSection cs_nWalletUnlockTime;
 
@@ -419,7 +470,10 @@ UniValue getaddressesbyaccount(const UniValue& params, bool fHelp)
     return ret;
 }
 
-void SendMoney(const CTxDestination& address, CAmount nValue, CWalletTx& wtxNew, bool fUseIX = false)
+// TODO `opReturn` was added as an optional parameter for speed of
+// implementation. This approach should be validated and corrected when time
+// allows.
+void SendMoney(const CTxDestination& address, CAmount nValue, CWalletTx& wtxNew, bool fUseIX = false, const std::string& opReturn = "")
 {
     // Check amount
     if (nValue <= 0)
@@ -441,7 +495,7 @@ void SendMoney(const CTxDestination& address, CAmount nValue, CWalletTx& wtxNew,
     // Create and send the transaction
     CReserveKey reservekey(pwalletMain);
     CAmount nFeeRequired;
-    if (!pwalletMain->CreateTransaction(scriptPubKey, nValue, wtxNew, reservekey, nFeeRequired, strError, NULL, ALL_COINS, fUseIX, (CAmount)0)) {
+    if (!pwalletMain->CreateTransaction(scriptPubKey, nValue, wtxNew, reservekey, nFeeRequired, strError, NULL, ALL_COINS, fUseIX, (CAmount)0, opReturn)) {
         if (nValue + nFeeRequired > pwalletMain->GetBalance())
             strError = strprintf("Error: This transaction requires a transaction fee of at least %s because of its amount, complexity, or use of recently received funds!", FormatMoney(nFeeRequired));
         LogPrintf("SendMoney() : %s\n", strError);
