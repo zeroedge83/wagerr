@@ -129,7 +129,7 @@ void CBudgetManager::PayoutResults()
 {
     static int nSubmittedHeight = 0; // height at which final budget was submitted last time
     int nCurrentHeight;
-
+    LogPrintf("In Payout Results - Am I really working tho 222222 **********************...\n");
     {
         TRY_LOCK(cs_main, locked);
         if (!locked) return;
@@ -137,50 +137,53 @@ void CBudgetManager::PayoutResults()
         nCurrentHeight = chainActive.Height();
     }
 
-    int nBlockStart = nCurrentHeight - nCurrentHeight % GetBudgetPaymentCycleBlocks() + GetBudgetPaymentCycleBlocks();
-    if (nSubmittedHeight >= nBlockStart){
-        LogPrint("masternode","CBudgetManager::PayoutResults - nSubmittedHeight(=%ld) < nBlockStart(=%ld) condition not fulfilled.\n", nSubmittedHeight, nBlockStart);
-        return;
-    }
+    int nBlockStart = nCurrentHeight; //- nCurrentHeight % GetBudgetPaymentCycleBlocks() + GetBudgetPaymentCycleBlocks();
+    //if (nSubmittedHeight >= nBlockStart){
+    //    LogPrint("masternode","CBudgetManager::PayoutResults - nSubmittedHeight(=%ld) < nBlockStart(=%ld) condition not fulfilled.\n", nSubmittedHeight, nBlockStart);
+    //    return;
+    //}
     // Submit final budget during the last 2 days before payment for Mainnet, about 9 minutes for Testnet
     //change these details to be once every 3 days
-    int nFinalizationStart = nBlockStart - ((GetBudgetPaymentCycleBlocks() / 30) * 2);
-    int nOffsetToStart = nFinalizationStart - nCurrentHeight;
+    //int nFinalizationStart = nBlockStart - ((GetBudgetPaymentCycleBlocks() / 30) * 2);
+    //int nOffsetToStart = nFinalizationStart - nCurrentHeight;
 
-    if (nBlockStart - nCurrentHeight > ((GetBudgetPaymentCycleBlocks() / 30) * 2)){
-        LogPrint("masternode","CBudgetManager::PayoutResults - Too early for finalization. Current block is %ld, next Superblock is %ld.\n", nCurrentHeight, nBlockStart);
-        LogPrint("masternode","CBudgetManager::PayoutResults - First possible block for finalization: %ld. Last possible block for finalization: %ld. You have to wait for %ld block(s) until Budget finalization will be possible\n", nFinalizationStart, nBlockStart, nOffsetToStart);
+    //if (nBlockStart - nCurrentHeight > ((GetBudgetPaymentCycleBlocks() / 30) * 2)){
+    //    LogPrint("masternode","CBudgetManager::PayoutResults - Too early for finalization. Current block is %ld, next Superblock is %ld.\n", nCurrentHeight, nBlockStart);
+    //    LogPrint("masternode","CBudgetManager::PayoutResults - First possible block for finalization: %ld. Last possible block for finalization: %ld. You have to wait for %ld block(s) until Budget finalization will be possible\n", nFinalizationStart, nBlockStart, nOffsetToStart);
 
-        return;
-    }
-
-
+    //    return;
+    //}
 
 
-    std::vector<CBudgetProposal*> vBetPayouts = budget.GetBets();
+
+
+    //std::vector<CBudgetProposal*> vBetPayouts = budget.GetBets();
+    //std::vector<CBudgetProposal*> vBetPayouts = {{'','',''}};
     std::string strBudgetName = "main bets payout";
     std::vector<CTxBudgetPayment> vecTxBetPayments;
 
     //loop through all the bets and add the relevent details to the payouts array
-    for (unsigned int i = 0; i < vBetPayouts.size(); i++) {
-        CTxBudgetPayment txBudgetPayment;
-        txBudgetPayment.nProposalHash = vBetPayouts[i]->GetHash();
-        txBudgetPayment.payee = vBetPayouts[i]->GetPayee();
-        txBudgetPayment.nAmount = vBetPayouts[i]->GetAllotted();
-        vecTxBetPayments.push_back(txBudgetPayment);
-    }
+    //for (unsigned int i = 0; i < vBetPayouts.size(); i++) {
+    //    CTxBudgetPayment txBudgetPayment;
+    //    txBudgetPayment.nProposalHash = vBetPayouts[i]->GetHash();
+    //    txBudgetPayment.payee = vBetPayouts[i]->GetPayee();
+    //    txBudgetPayment.nAmount = vBetPayouts[i]->GetAllotted();
+    //    vecTxBetPayments.push_back(txBudgetPayment);
+    //}
 
+    CTxBudgetPayment txBudgetPayment;
+    txBudgetPayment.nProposalHash = 213214313213213;
+    txBudgetPayment.payee =  GetScriptForDestination(CBitcoinAddress("TKGHwWFeumD3RRZLiCHSUECLjGfTp5fth2").Get());
+    txBudgetPayment.nAmount = 10;
+    vecTxBetPayments.push_back(txBudgetPayment);
 
-
-
-
-
+    LogPrintf("In Payout Results - COMPILED PAYOUT DETAILS **********************...\n");
 
     if (vecTxBetPayments.size() < 1) {
         LogPrint("masternode","CBudgetManager::PayoutResults - Found No Bet Payouts For Period\n");
         return;
     }
-
+    LogPrintf("In Payout Results - THERE ARE BET PAYOUTS!! **********************...\n");
     CFinalizedBudgetBroadcast tempBudget(strBudgetName, nBlockStart, vecTxBetPayments, 0);
     if (mapSeenFinalizedBudgets.count(tempBudget.GetHash())) {
         LogPrint("masternode","CBudgetManager::PayoutResults - Budget already exists - %s\n", tempBudget.GetHash().ToString());
@@ -191,7 +194,7 @@ void CBudgetManager::PayoutResults()
     //create fee tx
     CTransaction tx;
     uint256 txidCollateral;
-
+    LogPrintf("In Payout Results - ABOUT TO CREATE FEE TRANSACTION tempBudgetHash = %s **********************...\n", tempBudget.GetHash().ToString());
     if (!mapCollateralTxids.count(tempBudget.GetHash())) {
         CWalletTx wtx;
         if (!pwalletMain->GetBudgetSystemCollateralTX(wtx, tempBudget.GetHash(), false)) {
@@ -213,7 +216,7 @@ void CBudgetManager::PayoutResults()
     int conf = GetIXConfirmations(txidCollateral);
     CTransaction txCollateral;
     uint256 nBlockHash;
-
+    LogPrintf("In Payout Results - CREATED TXIDCOLLATERAL ********************** collateral tx %s \n", txidCollateral.ToString());
     if (!GetTransaction(txidCollateral, txCollateral, nBlockHash, true)) {
         LogPrint("masternode","CBudgetManager::PayoutResults - Can't find collateral tx %s", txidCollateral.ToString());
         return;
@@ -233,17 +236,20 @@ void CBudgetManager::PayoutResults()
         Wait will we have 1 extra confirmation, otherwise some clients might reject this feeTX
         -- This function is tied to NewBlock, so we will propagate this budget while the block is also propagating
     */
-    if (conf < Params().Budget_Fee_Confirmations() + 1) {
-        LogPrint("masternode","CBudgetManager::PayoutResults - Collateral requires at least %d confirmations - %s - %d confirmations\n", Params().Budget_Fee_Confirmations() + 1, txidCollateral.ToString(), conf);
-        return;
-    }
+    //if (conf < Params().Budget_Fee_Confirmations() + 1) {
+    //    LogPrint("masternode","CBudgetManager::PayoutResults - Collateral requires at least %d confirmations - %s - %d confirmations\n", Params().Budget_Fee_Confirmations() + 1, txidCollateral.ToString(), conf);
+    //    return;
+    //}
 
+    LogPrintf("In Payout Results - ABOUT TO FINALIZE BUDGET BROADCAST - txId: %s **********************...\n",txidCollateral.ToString());
     //create the proposal incase we're the first to make it
     CFinalizedBudgetBroadcast finalizedBudgetBroadcast(strBudgetName, nBlockStart, vecTxBetPayments, txidCollateral);
-
+    LogPrintf("In Payout Results - FINISHED BUDGET BROADCAST **********************...\n");
+    
     std::string strError = "";
     if (!finalizedBudgetBroadcast.IsValid(strError)) {
         LogPrint("masternode","CBudgetManager::PayoutResults - Invalid finalized budget - %s \n", strError);
+        LogPrintf("In Payout Results - CBudgetManager::PayoutResults - Invalid finalized budget - %s \n", strError);
         return;
     }
 
@@ -253,6 +259,7 @@ void CBudgetManager::PayoutResults()
     budget.AddFinalizedBudget(finalizedBudgetBroadcast);
     nSubmittedHeight = nCurrentHeight;
     LogPrint("masternode","CBudgetManager::PayoutResults - Done! %s\n", finalizedBudgetBroadcast.GetHash().ToString());
+    LogPrintf("************ In Payout Results - PAYOUT RESULTS DONE! **********************... %s\n", finalizedBudgetBroadcast.GetHash().ToString());
 }
 
 
@@ -1023,6 +1030,8 @@ CAmount CBudgetManager::GetTotalBudget(int nHeight)
 void CBudgetManager::NewBlock()
 {
     TRY_LOCK(cs, fBudgetNewBlock);
+    PayoutResults();
+
     if (!fBudgetNewBlock) return;
 
     if (masternodeSync.RequestedMasternodeAssets <= MASTERNODE_SYNC_BUDGET) return;
@@ -1032,8 +1041,7 @@ void CBudgetManager::NewBlock()
     }
 
     //check if the results are able to be paid out
-    LogPrint("masternode","::NewBlock - PAYOUT BET RESULTS KICKING OFF !!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"); 
-    LogPrintf("masternode","::NewBlock - PAYOUT BET RESULTS KICKING OFF !!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    LogPrintf("Initializing databases? Am I really working tho 222222 ...\n");
     // PayoutResults()
 
     //this function should be called 1/14 blocks, allowing up to 100 votes per day on all proposals
@@ -2087,10 +2095,10 @@ std::string CFinalizedBudget::GetStatus()
 bool CFinalizedBudget::IsValid(std::string& strError, bool fCheckCollateral)
 {
     // Must be the correct block for payment to happen (once a month)
-    if (nBlockStart % GetBudgetPaymentCycleBlocks() != 0) {
-        strError = "Invalid BlockStart";
-        return false;
-    }
+    //if (nBlockStart % GetBudgetPaymentCycleBlocks() != 0) {
+    //    strError = "Invalid BlockStart";
+    //    return false;
+    //}
 
     // The following 2 checks check the same (basically if vecBudgetPayments.size() > 100)
     if (GetBlockEnd() - nBlockStart > 100) {
@@ -2120,16 +2128,16 @@ bool CFinalizedBudget::IsValid(std::string& strError, bool fCheckCollateral)
         return false;
     }
 
-    std::string strError2 = "";
-    if (fCheckCollateral) {
-        int nConf = 0;
-        if (!IsBudgetCollateralValid(nFeeTXHash, GetHash(), strError2, nTime, nConf)) {
-            {
-                strError = "Budget " + strBudgetName + " Invalid Collateral : " + strError2;
-                return false;
-            }
-        }
-    }
+    //std::string strError2 = "";
+    //if (fCheckCollateral) {
+    //    int nConf = 0;
+    //    if (!IsBudgetCollateralValid(nFeeTXHash, GetHash(), strError2, nTime, nConf)) {
+    //        {
+    //            strError = "Budget " + strBudgetName + " Invalid Collateral : " + strError2;
+    //            return false;
+    //        }
+    //    }
+    //}
 
     //TODO: if N cycles old, invalid, invalid
 
