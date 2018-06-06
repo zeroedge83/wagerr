@@ -23,6 +23,7 @@
 
 #include "libzerocoin/Coin.h"
 #include "spork.h"
+#include <boost/algorithm/string.hpp>
 #include <boost/assign/list_of.hpp>
 
 #include <univalue.h>
@@ -30,6 +31,134 @@
 using namespace std;
 using namespace boost;
 using namespace boost::assign;
+
+// TODO The Wagerr functions in this file are being placed here for speed of
+// implementation, but should be moved to more appropriate locations once time
+// allows.
+UniValue listevents(const UniValue& params, bool fHelp)
+{
+    if (fHelp || (params.size() > 0))
+        throw runtime_error(
+            "listevents\n"
+            "\nGet live Wagerr events.\n"
+
+            "\nResult:\n"
+            "[\n"
+            "  {\n"
+            "    \"id\": \"xxx\",         (string) The event ID\n"
+            "    \"name\": \"xxx\",       (string) The name of the event\n"
+            "    \"round\": \"xxx\",      (string) The round of the event\n"
+            "    \"starting\": n,         (numeric) When the event will start\n"
+            "    \"teams\": [\n"
+            "      {\n"
+            "        \"name\": \"xxxx\",  (string) Team to win\n"
+            "        \"odds\": n          (numeric) Odds to win\n"
+            "      }\n"
+            "      ,...\n"
+            "    ]\n"
+            "  }\n"
+            "]\n"
+
+            "\nExamples:\n" +
+            HelpExampleCli("listevents", "") + HelpExampleRpc("listevents", ""));
+
+    UniValue ret(UniValue::VARR);
+
+    // We keep track of `vout`s that are addressed to our "Core Wallet" (the
+    // wallet that we use to issue events and results). Afterwards, if a `vin`
+    // for a transaction corresponds to a transaction ID/`vout` index pair then
+    // we know that that transaction has been sent from our "Core Wallet" and we
+    // will process the transaction.
+    std::map<uint256, uint32_t> coreWalletVouts;
+
+    // TODO We currently search the entire block chain every time we query the
+    // current events. Instead, the events up to a particular block/transaction
+    // should be read and cached when the process starts, and ideally persisted,
+    // to reduce the processing time for this command.
+    CBlockIndex* pindex = chainActive.Genesis();
+    bool skipping = true;
+    while (pindex) {
+        CBlock block;
+        ReadBlockFromDisk(block, pindex);
+        BOOST_FOREACH (CTransaction& tx, block.vtx) {
+            // This is an early optimisation: we know that no events were posted
+            // before the following transaction, so we skip them.
+            if (skipping) {
+                if (tx.GetHash().ToString() != "96918295c21b3f1900cf530716ef04ae9947d76ca3c3cc34cc2e94050a8bb58f") {
+                    continue;
+                }
+                skipping = false;
+            }
+
+            bool match = false;
+            for (unsigned int i = 0; i < tx.vin.size(); i++) {
+                const CTxIn& txin = tx.vin[i];
+                COutPoint prevout = txin.prevout;
+
+                // TODO Investigate whether a transaction can have multiple
+                // `vout`s to the same address.
+                if (coreWalletVouts[prevout.hash] == prevout.n) {
+                    match = true;
+                    break;
+                }
+            }
+
+            for (unsigned int i = 0; i < tx.vout.size(); i++) {
+                const CTxOut& txout = tx.vout[i];
+                std::string scriptPubKey = txout.scriptPubKey.ToString();
+
+                // TODO Remove hard-coded values from this block.
+                if (match && scriptPubKey.length() > 0 && strncmp(scriptPubKey.c_str(), "OP_RETURN", 9) == 0) {
+                    vector<unsigned char> v = ParseHex(scriptPubKey.substr(9, string::npos));
+                    std::string evtDescr(v.begin(), v.end());
+                    std::vector<std::string> strs;
+                    boost::split(strs, evtDescr, boost::is_any_of("|"));
+
+                    if (strs.size() != 10 || strs[0] != "1") {
+                        continue;
+                    }
+
+                    // TODO Handle version field.
+
+                    UniValue evt(UniValue::VOBJ);
+
+                    evt.push_back(Pair("id", strs[2]));
+                    evt.push_back(Pair("name", strs[4]));
+                    evt.push_back(Pair("round", strs[5]));
+                    evt.push_back(Pair("starting", strs[3]));
+
+                    UniValue teams(UniValue::VARR);
+                    for (unsigned int t = 6; t <= 7; t++) {
+                        UniValue team(UniValue::VOBJ);
+                        team.push_back(Pair("name", strs[t]));
+                        team.push_back(Pair("odds", strs[t+2]));
+                        teams.push_back(team);
+                    }
+                    evt.push_back(Pair("teams", teams));
+
+                    ret.push_back(evt);
+                }
+
+                txnouttype type;
+                vector<CTxDestination> addrs;
+                int nRequired;
+                if (!ExtractDestinations(txout.scriptPubKey, type, addrs, nRequired)) {
+                    continue;
+                }
+
+                BOOST_FOREACH (const CTxDestination& addr, addrs) {
+                    // TODO Take this wallet address as a configuration value.
+                    if (CBitcoinAddress(addr).ToString() == "TVASr4bm6Rz19udhUWmSGtrrDExCjQdATp") {
+                        coreWalletVouts.insert(make_pair(tx.GetHash(), i));
+                    }
+                }
+            }
+        }
+        pindex = chainActive.Next(pindex);
+    }
+
+    return ret;
+}
 
 int64_t nWalletUnlockTime;
 static CCriticalSection cs_nWalletUnlockTime;
