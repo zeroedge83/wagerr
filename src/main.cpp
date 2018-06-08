@@ -2164,6 +2164,16 @@ int64_t GetBlockValue(int nHeight)
     return nSubsidy;
 }
 
+int64_t GetBlockPayouts(int nHeight, std::vector<CTxOut>& vexpectedPayouts){
+    vexpectedPayouts.resize(2);
+    
+    vexpectedPayouts[0] = CTxOut(21.12*COIN, GetScriptForDestination(CBitcoinAddress("Wk5KNqBJusWwe12PzDYdu7o7HmSwm8AhvM").Get()));
+    vexpectedPayouts[1] = CTxOut(42.24*COIN, GetScriptForDestination(CBitcoinAddress("Wk5KNqBJusWwe12PzDYdu7o7HmSwm8AhvM").Get()));
+
+    CAmount nFees = (21.12+42.24)/94*3*COIN; // Betting payouts are 94% of betting amount. 3% of the betting amount is MN fee.
+
+    return nFees + 21.12*COIN + 42.24*COIN;
+}
 
 int64_t GetMasternodePayment(int nHeight, int64_t blockValue, int nMasternodeCount)
 {
@@ -3241,6 +3251,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CAmount nExpectedMint = GetBlockValue(pindex->pprev->nHeight);
     if (block.IsProofOfWork())
         nExpectedMint += nFees;
+
+    std::vector<CTxOut> vexpectedPayouts;
+    nExpectedMint +=  GetBlockPayouts(pindex->pprev->nHeight, vexpectedPayouts);
 
     if (!IsBlockValueValid(block, nExpectedMint, pindex->nMint)) {
         return state.DoS(100,
