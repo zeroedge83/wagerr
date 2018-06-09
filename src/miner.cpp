@@ -409,7 +409,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet* pwallet, 
             voutPayouts[0] = CTxOut(21.12 * COIN, GetScriptForDestination(CBitcoinAddress("Wk5KNqBJusWwe12PzDYdu7o7HmSwm8AhvM").Get()));
             voutPayouts[1] = CTxOut(42.24 * COIN, GetScriptForDestination(CBitcoinAddress("Wk5KNqBJusWwe12PzDYdu7o7HmSwm8AhvM").Get()));
 
-            nFees = (21.12+42.24)/94*3*COIN; // Betting payouts are 94% of betting amount. 3% of the betting amount is MN fee.
+            nFees = 0*COIN; // Betting payouts are 94% of betting amount. 3% of the betting amount is MN fee.
             //Masternode payments and betting payouts
             pwallet->FillCoinStake(txCoinStake, nFees, voutPayouts);   // Kokary: add betting fee
 
