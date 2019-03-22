@@ -2,13 +2,12 @@
 # Copyright (c) 2018-2019 The Wagerr developers
 # Copyright (c) 2019 The OBSR developers
 name: wagerr
-base: core18
-version: 2.0.99
-summary:   wagerr, digital currency for decentralized betting
+version: 3.0.99
+summary: wagerr, digital currency for decentralized betting
 description: |
   Wagerr is a decentralized sportsbook that changes the way the world
   bets on sports.
-  
+
   - built for everyone.
     Wagerr uses distributed
     blockchain technology to execute betting contracts. It escrows
@@ -29,18 +28,18 @@ description: |
     sell it for the highest price the market will bear. Watch the
     video and check out the “economics” tab for more details on how
     the Wagerr economy works.
-  
+
   Homepage: https://wagerr.com/
   Blockexplorer (main): https://explorer.wagerr.com/
   Blockexplorer (testnet): https://explorer2.wagerr.com/
   Github: https://github.com/wagerr/wagerr/
   Wiki: https://github.com/wagerr/wagerr/wiki
-  
+
   Coinmarketcap: https://coinmarketcap.com/currencies/wagerr/
-  
+
   Chat with us:
   - Discord (https://discord.gg/vvvvDbv)
-  
+
   Social networks/forums:
   - Telegram (https://t.me/wagerrcoin)
   - twitter (https://twitter.com/wagerrx)
@@ -101,7 +100,7 @@ parts:
   wagerr:
     source: https://github.com/wagerr/wagerr
     source-type: git
-    source-tag: master
+    source-tag: 2019_regtest-mode-and-fake-test-suite
     plugin: nil
     override-build: |
       SHORTNAME="wagerr"
