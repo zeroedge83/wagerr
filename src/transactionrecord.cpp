@@ -7,6 +7,7 @@
 
 #include "transactionrecord.h"
 
+#include "bet.h"
 #include "base58.h"
 #include "obfuscation.h"
 #include "swifttx.h"
@@ -299,9 +300,24 @@ std::vector<TransactionRecord> TransactionRecord::decomposeTransaction(const CWa
                     sub.address = mapValue["zerocoinmint"];
                     sub.credit += txout.nValue;
                 } else {
-                    // Sent to IP, or other non-address transaction like OP_EVAL
-                    sub.type = TransactionRecord::SendToOther;
-                    sub.address = mapValue["to"];
+                    bool isBet = false;
+                    if (txout.scriptPubKey.IsUnspendable()) {
+                        vector<unsigned char> vOpCode = ParseHex(txout.scriptPubKey.ToString().substr(9, string::npos));
+                        std::string opCode(vOpCode.begin(), vOpCode.end());
+
+                        CPeerlessBet plBet;
+                        if (CPeerlessBet::FromOpCode(opCode, plBet)) {
+                            isBet = true;
+                        }
+                    }
+                    if (isBet) {
+                        sub.type = TransactionRecord::BetPlaced;
+                        sub.address = mapValue["to"];
+                    } else {
+                        // Sent to IP, or other non-address transaction like OP_EVAL
+                        sub.type = TransactionRecord::SendToOther;
+                        sub.address = mapValue["to"];
+                    }
                 }
 
                 if (mapValue["DS"] == "1") {
