@@ -15,13 +15,16 @@
 // String lengths for all currently supported op codes.
 #define PE_OP_STRLEN  74
 #define PB_OP_STRLEN  16
-#define PR_OP_STRLEN  20
+#define PR_OP_STRLEN  22
 #define PUO_OP_STRLEN 38
 #define CGE_OP_STRLEN 14
 #define CGB_OP_STRLEN 10
 #define CGR_OP_STRLEN 10
 #define PSE_OP_STRLEN 34
 #define PTE_OP_STRLEN 34
+
+#define REFUND_HOME_SCORE 0
+#define REFUND_AWAY_SCORE 43931
 
 /**
  * Validate the transaction to ensure it has been posted by an oracle node.
@@ -460,9 +463,8 @@ bool CPeerlessResult::FromOpCode(std::string opCode, CPeerlessResult &pr)
     }
 
     pr.nEventId         = FromChars(opCode[3], opCode[4], opCode[5], opCode[6]);
-    pr.nMoneyLineResult = (ResultType) opCode[7];
-    pr.nSpreadResult    = (ResultType) opCode[8];
-    pr.nTotalResult     = (ResultType) opCode[9];
+    pr.nHomeScore       = FromChars (opCode[7], opCode[8]);
+    pr.nAwayScore       = FromChars (opCode[9], opCode[10]);
 
     return true;
 }
@@ -476,12 +478,12 @@ bool CPeerlessResult::FromOpCode(std::string opCode, CPeerlessResult &pr)
  */
 bool CPeerlessResult::ToOpCode(CPeerlessResult pr, std::string &opCode)
 {
-    std::string sEventId         = ToHex(pr.nEventId, 8);
-    std::string sMoneyLineResult = ToHex(pr.nMoneyLineResult, 2);
-    std::string sSpreadResult    = ToHex(pr.nSpreadResult, 2);
-    std::string sTotalResult     = ToHex(pr.nTotalResult, 2);
+    std::string sEventId        = ToHex(pr.nEventId, 8);
+    std::string sHomeScore      = ToHex(pr.nHomeScore, 4);
+    std::string sAwayScore      = ToHex(pr.nAwayScore, 4);
 
-    opCode = BTX_HEX_PREFIX "0104" + sEventId + sMoneyLineResult + sSpreadResult + sTotalResult;
+
+    opCode = BTX_HEX_PREFIX "0104" + sEventId + sHomeScore + sAwayScore;
 
     // Ensure peerless result OpCode string is the correct length.
     if (opCode.length() != PR_OP_STRLEN) {
@@ -1549,53 +1551,39 @@ std::vector<CTxOut> GetBetPayouts(int height)
         OutcomeType nMoneylineResult = (OutcomeType) 0;
         std::vector<OutcomeType> vSpreadsResult;
         std::vector<OutcomeType> vTotalsResult;
+
         unsigned int nMoneylineOdds = 0;
         unsigned int nSpreadsOdds = 0;
         unsigned int nTotalsOdds = 0;
+        unsigned int nTotalsPoints = result.nHomeScore + result.nAwayScore;
+        unsigned int nSpreadsDifference =  0;
+        bool HomeFavorite = false;
+
+        // Set the temp odds variables to default values.
+        unsigned int nTempMoneylineOdds = 0;
+        unsigned int nTempSpreadsOdds = 0;
+        unsigned int nTempTotalsOdds = 0;
+
+        bool UpdateMoneyLine = false;
+        bool UpdateSpreads = false;
+        bool UpdateTotals = false;
+        unsigned int nSpreadsWinner = 0;
+        unsigned int nTotalsWinner = 0;
 
         time_t latestEventStartTime = 0;
         bool eventFound = false;
 
-        /** TODO - Code below needs to be refactored! **/
-        // Find peerless outcome (result).
-        if (result.nMoneyLineResult == homeWin) {
+        // Find MoneyLine outcome (result).
+        if (result.nHomeScore > result.nAwayScore) {
             nMoneylineResult = moneyLineWin;
         }
-        else if (result.nMoneyLineResult == awayWin) {
+        else if (result.nHomeScore < result.nAwayScore) {
             nMoneylineResult = moneyLineLose;
         }
-        else if (result.nMoneyLineResult == draw) {
+        else if (result.nHomeScore == result.nAwayScore) {
             nMoneylineResult = moneyLineDraw;
         }
-
-        // Find spreads outcome (result).
-        if (result.nSpreadResult == homeWin) {
-            vSpreadsResult.emplace_back(spreadHome);
-            vSpreadsResult.emplace_back(spreadHome);
-        }
-        else if (result.nSpreadResult == awayWin) {
-            vSpreadsResult.emplace_back(spreadAway);
-            vSpreadsResult.emplace_back(spreadAway);
-        }
-        else {
-            vSpreadsResult.emplace_back(spreadHome);
-            vSpreadsResult.emplace_back(spreadAway);
-        }
-
-        // Find totals outcome (result).
-        if (result.nTotalResult == homeWin) {
-            vTotalsResult.emplace_back(totalOver);
-            vTotalsResult.emplace_back(totalOver);
-        }
-        else if (result.nTotalResult == awayWin) {
-            vTotalsResult.emplace_back(totalUnder);
-            vTotalsResult.emplace_back(totalUnder);
-        }
-        else {
-            vTotalsResult.emplace_back(totalOver);
-            vTotalsResult.emplace_back(totalUnder);
-        }
-
+        
         // Traverse the block chain to find events and bets.
         while (BlocksIndex) {
             CBlock block;
@@ -1626,20 +1614,31 @@ std::vector<CTxOut> GetBetPayouts(int height)
 
                             LogPrintf("EVENT OP CODE - %s \n", opCode.c_str());
 
-                            // If current event ID matches result ID set the teams and odds.
+                            UpdateMoneyLine = true;
+
+                            // If current event ID matches result ID set the temp odds.
                             if (result.nEventId == pe.nEventId && nMoneylineResult == moneyLineWin) {
-                                nMoneylineOdds = pe.nHomeOdds;
+                                nTempMoneylineOdds = pe.nHomeOdds;
                             }
                             else if (result.nEventId == pe.nEventId && nMoneylineResult == moneyLineLose) {
-                                nMoneylineOdds = pe.nAwayOdds;
+                                nTempMoneylineOdds = pe.nAwayOdds;
                             }
                             else if (result.nEventId == pe.nEventId && nMoneylineResult == moneyLineDraw) {
-                                nMoneylineOdds = pe.nDrawOdds;
+                                nTempMoneylineOdds = pe.nDrawOdds;
                             }
 
-                            // Set the latest event start time and eventFound flags  .
+                            // Set which team is the favorite, used for calculating spreads difference & winner.
                             latestEventStartTime = pe.nStartTime;
                             eventFound = true;
+
+                            if (pe.nHomeOdds < pe.nAwayOdds) {
+                                HomeFavorite = true;
+                                nSpreadsDifference = result.nHomeScore - result.nAwayScore;
+                            }
+
+                            else {
+                                nSpreadsDifference = result.nAwayScore - result.nHomeScore;
+                            }
                         }
 
                         // Peerless update odds OP RETURN transaction.
@@ -1648,15 +1647,17 @@ std::vector<CTxOut> GetBetPayouts(int height)
 
                             LogPrintf("PUO EVENT OP CODE - %s \n", opCode.c_str());
 
+                            UpdateMoneyLine = true;
+
                             // If current event ID matches result ID set the odds.
                             if (result.nEventId == puo.nEventId && nMoneylineResult == moneyLineWin) {
-                                nMoneylineOdds = puo.nHomeOdds;
+                                nTempMoneylineOdds = puo.nHomeOdds;
                             }
                             else if (result.nEventId == puo.nEventId && nMoneylineResult == moneyLineLose) {
-                                nMoneylineOdds = puo.nAwayOdds;
+                                nTempMoneylineOdds = puo.nAwayOdds;
                             }
                             else if (result.nEventId == puo.nEventId && nMoneylineResult == moneyLineDraw) {
-                                nMoneylineOdds = puo.nDrawOdds;
+                                nTempMoneylineOdds = puo.nDrawOdds;
                             }
                         }
 
@@ -1665,16 +1666,39 @@ std::vector<CTxOut> GetBetPayouts(int height)
                         if (validResultTx && CPeerlessSpreadsEvent::FromOpCode(opCode, pse) && eventFound) {
 
                             LogPrintf("PSE EVENT OP CODE - %s \n", opCode.c_str());
+                            UpdateSpreads = true;
 
-                            // If current event ID matches result ID set the odds.
-                            if (result.nEventId == pse.nEventId && vSpreadsResult.at(0) == spreadHome && vSpreadsResult.at(1) == spreadHome) {
-                                nSpreadsOdds = pse.nHomeOdds;
+                            if (pse.nPoints == nSpreadsDifference ) {
+                                nSpreadsWinner = ResultType::push;
                             }
-                            else if (result.nEventId == pse.nEventId && vSpreadsResult.at(0) == spreadAway && vSpreadsResult.at(1) == spreadAway) {
-                                nSpreadsOdds = pse.nAwayOdds;
+                            else if (HomeFavorite){
+                                if (pse.nPoints > nSpreadsDifference) {
+                                    nSpreadsWinner = ResultType::awayWin;
+                                }
+                                else{
+                                    nSpreadsWinner = ResultType::homeWin;
+                                }
                             }
-                            else if (result.nEventId == pse.nEventId && vSpreadsResult.at(0) == spreadHome && vSpreadsResult.at(1) == spreadAway) {
-                                nSpreadsOdds = Params().OddsDivisor();
+                            else {
+                                if (pse.nPoints < nSpreadsDifference) {
+                                    nSpreadsWinner = ResultType::awayWin;
+                                }
+                                else {
+                                    nSpreadsWinner = ResultType::homeWin;
+                                }
+                            }
+
+                            // If current event ID matches result ID set the temp odds.
+                            if (result.nEventId == pse.nEventId && nSpreadsWinner == ResultType::push) {
+                                nTempSpreadsOdds = Params().OddsDivisor();
+                            }
+
+                            else if (result.nEventId == pse.nEventId && nSpreadsWinner == ResultType::awayWin) {
+                                nTempSpreadsOdds = pse.nAwayOdds;
+                            }
+
+                            else if (result.nEventId == pse.nEventId && nSpreadsWinner == ResultType::homeWin) {
+                                nTempSpreadsOdds = pse.nHomeOdds;
                             }
                         }
 
@@ -1683,16 +1707,28 @@ std::vector<CTxOut> GetBetPayouts(int height)
                         if (validResultTx && CPeerlessTotalsEvent::FromOpCode(opCode, pte) && eventFound) {
 
                             LogPrintf("PTE EVENT OP CODE - %s \n", opCode.c_str());
+                            UpdateTotals = true;
 
-                            // If current event ID matches result ID set the odds.
-                            if (result.nEventId == pte.nEventId && vTotalsResult.at(0) == totalOver && vTotalsResult.at(1) == totalOver) {
-                                nTotalsOdds = pte.nOverOdds;
+                            // Find totals outcome (result).
+                            if (pte.nPoints == nTotalsPoints) {
+                                nTotalsWinner = ResultType::push;
                             }
-                            else if (result.nEventId == pte.nEventId && vTotalsResult.at(0) == totalUnder && vTotalsResult.at(1) == totalUnder) {
-                                nTotalsOdds = pte.nUnderOdds;
+                            else if (pte.nPoints > nTotalsPoints) {
+                                nTotalsWinner = ResultType::awayWin;
                             }
-                            else if (result.nEventId == pte.nEventId && vTotalsResult.at(0) == totalOver && vTotalsResult.at(1) == totalUnder) {
-                                nTotalsOdds = Params().OddsDivisor();
+                            else {
+                                nTotalsWinner = ResultType::homeWin;
+                            }
+
+                            // If current event ID matches result ID set the temp odds.
+                            if (result.nEventId == pte.nEventId && nTotalsWinner == ResultType::push) {
+                                nTempTotalsOdds = Params().OddsDivisor();
+                            }
+                            else if (result.nEventId == pte.nEventId && nTotalsWinner == ResultType::awayWin) {
+                                nTempTotalsOdds = pte.nUnderOdds;
+                            }
+                            else if (result.nEventId == pte.nEventId && nTotalsWinner == ResultType::homeWin) {
+                                nTempTotalsOdds = pte.nOverOdds;
                             }
                         }
 
@@ -1715,7 +1751,7 @@ std::vector<CTxOut> GetBetPayouts(int height)
                                     CAmount winnings = 0;
 
                                     // If bet payout result.
-                                    if (result.nMoneyLineResult != refund) {
+                                    if (result.nHomeScore != REFUND_HOME_SCORE && result.nAwayScore != REFUND_AWAY_SCORE ) {
 
                                         // Calculate winnings.
                                         if (pb.nOutcome == nMoneylineResult) {
@@ -1766,6 +1802,60 @@ std::vector<CTxOut> GetBetPayouts(int height)
                         }
                     }
                 }
+            }
+
+            // If an update transaction came in on this block, the bool would be set to true and the odds/winners will be updated (below) for the next block
+            if (UpdateMoneyLine){
+                UpdateMoneyLine = false;
+                nMoneylineOdds = nTempMoneylineOdds;
+            }
+
+            if (UpdateSpreads) {
+                //set the bool back to false
+                UpdateSpreads = false;
+                //set the payout odds (using the temp odds)
+                nSpreadsOdds = nTempSpreadsOdds;
+                //clear the winner vector (used to dertermine which bets to payout)
+                vSpreadsResult.clear();
+
+                //Depending on the calculations above we populate the winner vector (push/away/home)
+                if (nSpreadsWinner == 1 ) {
+                    vSpreadsResult.emplace_back(spreadHome);
+                    vSpreadsResult.emplace_back(spreadAway);
+                }
+
+                else if (nSpreadsWinner == 2) {
+                    vSpreadsResult.emplace_back(spreadAway);
+                    vSpreadsResult.emplace_back(spreadAway);
+                }
+
+                else if (nSpreadsWinner == 3) {
+                    vSpreadsResult.emplace_back(spreadHome);
+                    vSpreadsResult.emplace_back(spreadHome);
+                }
+
+                nSpreadsWinner = 0;
+            }
+
+            if (UpdateTotals) {
+
+                UpdateTotals = false;
+                nTotalsOdds = nTempTotalsOdds;
+                vTotalsResult.clear();
+
+                if (nTotalsWinner == 1) {
+                    vTotalsResult.emplace_back(totalOver);
+                    vTotalsResult.emplace_back(totalUnder);
+                }
+                else if (nTotalsWinner == 2) {
+                    vTotalsResult.emplace_back(totalUnder);
+                    vTotalsResult.emplace_back(totalUnder);
+                }
+                else if (nTotalsWinner == 3) {
+                    vTotalsResult.emplace_back(totalOver);
+                    vTotalsResult.emplace_back(totalOver);
+                }
+                nTotalsWinner = 0;
             }
 
             BlocksIndex = chainActive.Next(BlocksIndex);
