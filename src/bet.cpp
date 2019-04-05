@@ -1580,6 +1580,7 @@ std::vector<CTxOut> GetBetPayouts(int height)
         unsigned int nSpreadsWinner = 0;
         unsigned int nTotalsWinner = 0;
 
+        time_t tempEventStartTime = 0; 
         time_t latestEventStartTime = 0;
         bool eventFound = false;
 
@@ -1637,8 +1638,9 @@ std::vector<CTxOut> GetBetPayouts(int height)
                                 nTempMoneylineOdds = pe.nDrawOdds;
                             }
 
-                            // Set which team is the favorite, used for calculating spreads difference & winner.
-                            latestEventStartTime = pe.nStartTime;
+                            // Set which team is the favorite, used for calculating spreads difference & winner
+                            tempEventStartTime = pe.nStartTime;
+
                             eventFound = true;
 
                             if (pe.nHomeOdds < pe.nAwayOdds) {
@@ -1818,6 +1820,7 @@ std::vector<CTxOut> GetBetPayouts(int height)
             if (UpdateMoneyLine){
                 UpdateMoneyLine = false;
                 nMoneylineOdds = nTempMoneylineOdds;
+                latestEventStartTime = tempEventStartTime;
             }
 
             if (UpdateSpreads) {
