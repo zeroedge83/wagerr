@@ -1354,8 +1354,18 @@ void CEventDB::SetEvents(const eventIndex_t &eventIndex)
  */
 void CEventDB::AddEvent(CPeerlessEvent pe)
 {
-    LOCK(cs_setEvents);
-    eventsIndex.insert(make_pair(pe.nEventId, pe));
+    if (eventsIndex.count(pe.nEventId) > 0) {
+        CPeerlessEvent saved_pe = eventsIndex.find(pe.nEventId)->second;
+        saved_pe.nStartTime = pe.nStartTime;
+        saved_pe.nHomeOdds = pe.nHomeOdds;
+        saved_pe.nAwayOdds = pe.nAwayOdds;
+        saved_pe.nDrawOdds = pe.nDrawOdds;
+        eventsIndex[saved_pe.nEventId] = saved_pe;
+        CEventDB::SetEvents(eventsIndex); 
+    } else {
+        LOCK(cs_setEvents);
+        eventsIndex.insert(make_pair(pe.nEventId, pe));
+    }
 }
 
 /**
@@ -1743,6 +1753,7 @@ std::vector<CTxOut> GetBetPayouts(int height)
         unsigned int nSpreadsWinner = 0;
         unsigned int nTotalsWinner = 0;
 
+        time_t tempEventStartTime = 0; 
         time_t latestEventStartTime = 0;
         bool eventFound = false;
 
@@ -1800,8 +1811,9 @@ std::vector<CTxOut> GetBetPayouts(int height)
                                 nTempMoneylineOdds = pe.nDrawOdds;
                             }
 
-                            // Set which team is the favorite, used for calculating spreads difference & winner.
-                            latestEventStartTime = pe.nStartTime;
+                            // Set which team is the favorite, used for calculating spreads difference & winner
+                            tempEventStartTime = pe.nStartTime;
+
                             eventFound = true;
 
                             if (pe.nHomeOdds < pe.nAwayOdds) {
@@ -1981,6 +1993,7 @@ std::vector<CTxOut> GetBetPayouts(int height)
             if (UpdateMoneyLine){
                 UpdateMoneyLine = false;
                 nMoneylineOdds = nTempMoneylineOdds;
+                latestEventStartTime = tempEventStartTime;
             }
 
             if (UpdateSpreads) {
