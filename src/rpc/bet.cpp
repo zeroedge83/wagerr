@@ -8,6 +8,7 @@
 
 #include "net.h"
 #include "bet.h"
+#include "main.h"
 #include "rpc/server.h"
 
 #include <univalue.h>
@@ -198,4 +199,58 @@ UniValue getmappingname(const UniValue& params, bool fHelp)
     ret.push_back(mapping);
 
     return ret;
+}
+
+/**
+ * Inspect a block and output debugging info.
+ * The provided functionality is the same as the functionality from
+ * - GetBetPayouts()
+ * If its not found return an error message.
+ *
+ * @param params The RPC params consisting of the block height.
+ * @param fHelp  Help text
+ * @return
+ */
+UniValue bettingblockdebug(const UniValue& params, bool fHelp)
+{
+    if (fHelp || (params.size() < 1))
+        throw runtime_error(
+                "bettingblockdebug \n"
+                "Inspect a block and output debugging info.\n"
+
+                "\nExamples:\n" +
+                HelpExampleCli("bettingblockdebug", "34400") + HelpExampleRpc("bettingblockdebug", "34400"));
+
+    LOCK(cs_main);
+
+    uint8_t curparam = 0;
+    std::string strHeight = params[curparam].get_str();
+    int64_t nHeight;
+    if (!ParseInt64(strHeight, &nHeight))
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Block height is not a valid number");
+    if (nHeight < 0 || nHeight > chainActive.Height())
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Block height out of range");
+    curparam++;
+
+    CBlockIndex* pblockindex = chainActive[nHeight];
+
+    uint256 hash = pblockindex->GetBlockHash();
+
+    bool fVerbose = true;
+    if (curparam < params.size())
+        fVerbose = params[curparam].get_bool();
+    curparam++;
+
+    if (mapBlockIndex.count(hash) == 0)
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Block not found");
+
+    CBlock block;
+    if (!ReadBlockFromDisk(block, pblockindex))
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Can't read block from disk");
+
+    std::string strHex;
+    CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION);
+    ssBlock << block;
+    strHex = HexStr(ssBlock.begin(), ssBlock.end());
+    return strHex;
 }
