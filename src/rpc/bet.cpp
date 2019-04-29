@@ -8,6 +8,7 @@
 
 #include "net.h"
 #include "bet.h"
+#include "betting/payouts.h"
 #include "main.h"
 #include "rpc/server.h"
 
@@ -223,6 +224,8 @@ UniValue bettingblockdebug(const UniValue& params, bool fHelp)
 
     LOCK(cs_main);
 
+    UniValue ret(UniValue::VOBJ);
+
     uint8_t curparam = 0;
     std::string strHeight = params[curparam].get_str();
     int64_t nHeight;
@@ -252,5 +255,10 @@ UniValue bettingblockdebug(const UniValue& params, bool fHelp)
     CDataStream ssBlock(SER_NETWORK, PROTOCOL_VERSION);
     ssBlock << block;
     strHex = HexStr(ssBlock.begin(), ssBlock.end());
-    return strHex;
+
+    ret.push_back(Pair("blockHex", strHex));
+
+    std::vector<CTxOut> vBetPayouts = GetBetPayoutsDebugOrig(nHeight, ret);
+
+    return ret;
 }
