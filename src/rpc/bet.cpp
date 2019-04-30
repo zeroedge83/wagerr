@@ -258,7 +258,7 @@ UniValue bettingblockdebug(const UniValue& params, bool fHelp)
 
     ret.push_back(Pair("blockHex", strHex));
 
-    std::vector<CTxOut> vBetPayouts = GetBetPayoutsDebugOrig(nHeight, ret);
+    std::vector<CBetOut> vBetPayouts = GetBetPayoutsDebugOrig(nHeight, ret);
 
     return ret;
 }

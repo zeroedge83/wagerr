@@ -8,11 +8,11 @@
 
 #include <assert.h>
 
-std::vector<CTxOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObject)
+std::vector<CBetOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObject)
 {
-    std::vector<CTxOut> vexpectedPayouts;
+    std::vector<CBetOut> vExpectedPayouts;
     if (height <= Params().BetStartHeight())
-        return vexpectedPayouts;
+        return vExpectedPayouts;
 
     int nCurrentHeightUnused = chainActive.Height();
 
@@ -88,7 +88,7 @@ std::vector<CTxOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObject)
             CBlock block;
             if (!ReadBlockFromDisk(block, BlocksIndex)) {
                 LogPrintf("Could not find block %d when scanning until %d\n", BlocksIndex->nHeight, height);
-                return vexpectedPayouts;
+                return vExpectedPayouts;
             }
             time_t transactionTime = block.nTime;
 
@@ -271,7 +271,7 @@ std::vector<CTxOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObject)
 
                             LogPrintf("Result found ending search \n");
 
-                            return vexpectedPayouts;
+                            return vExpectedPayouts;
                         }
 
                         // Only payout bets that are between 25 - 10000 WRG inclusive (MaxBetPayoutRange).
@@ -337,7 +337,7 @@ std::vector<CTxOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObject)
                                     // Only add valid payouts to the vector.
                                     if (payout > 0) {
                                         // Add winning bet payout to the bet vector.
-                                        vexpectedPayouts.emplace_back(payout, GetScriptForDestination(CBitcoinAddress(payoutAddress).Get()), betAmount);
+                                        vExpectedPayouts.emplace_back(payout, GetScriptForDestination(CBitcoinAddress(payoutAddress).Get()), betAmount);
                                     }
                                 }
                             }
@@ -406,12 +406,12 @@ std::vector<CTxOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObject)
     debugObject.push_back(Pair("nLastScannedBlock", nLastScannedBlock));
     debugObject.push_back(Pair("results", uvResults));
 
-    return vexpectedPayouts;
+    return vExpectedPayouts;
 }
 
-std::vector<CTxOut> GetBetPayoutsDebug1(int height)
+std::vector<CBetOut> GetBetPayoutsDebug1(int height)
 {
-    std::vector<CTxOut> vexpectedPayouts;
+    std::vector<CBetOut> vExpectedPayouts;
     int nCurrentHeight = chainActive.Height();
 
     // Get all the results posted in the latest block.
@@ -649,7 +649,7 @@ std::vector<CTxOut> GetBetPayoutsDebug1(int height)
 
                             LogPrintf("Result found ending search \n");
 
-                            return vexpectedPayouts;
+                            return vExpectedPayouts;
                         }
 
                         // Only payout bets that are between 25 - 10000 WRG inclusive (MaxBetPayoutRange).
@@ -715,7 +715,7 @@ std::vector<CTxOut> GetBetPayoutsDebug1(int height)
                                     // Only add valid payouts to the vector.
                                     if (payout > 0) {
                                         // Add winning bet payout to the bet vector.
-                                        vexpectedPayouts.emplace_back(payout, GetScriptForDestination(CBitcoinAddress(payoutAddress).Get()), betAmount);
+                                        vExpectedPayouts.emplace_back(payout, GetScriptForDestination(CBitcoinAddress(payoutAddress).Get()), betAmount);
                                     }
                                 }
                             }
@@ -782,5 +782,5 @@ std::vector<CTxOut> GetBetPayoutsDebug1(int height)
         }
     }
 
-    return vexpectedPayouts;
+    return vExpectedPayouts;
 }

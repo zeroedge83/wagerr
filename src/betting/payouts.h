@@ -9,8 +9,8 @@
 
 #include <univalue.h>
 
-std::vector<CTxOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObj);
-std::vector<CTxOut> GetBetPayoutsDebug1(int height);
-std::vector<CTxOut> GetBetPayoutsDebug2(int height);
+std::vector<CBetOut> GetBetPayoutsDebugOrig(int height, UniValue &debugObj);
+std::vector<CBetOut> GetBetPayoutsDebug1(int height);
+std::vector<CBetOut> GetBetPayoutsDebug2(int height);
 
 #endif // BITCOIN_BETTING_PAYOUTS_H
