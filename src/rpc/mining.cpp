@@ -8,6 +8,7 @@
 
 #include "amount.h"
 #include "base58.h"
+#include "blocksignature.h"
 #include "chainparams.h"
 #include "core_io.h"
 #include "init.h"
@@ -170,6 +171,11 @@ UniValue generate(const UniValue& params, bool fHelp)
             // Yes, there is a chance every nonce could fail to satisfy the -regtest
             // target -- 1 in 2^(2^32). That ain't gonna happen.
             ++pblock->nNonce;
+            if(fPoS){
+                if (!SignBlock(*pblock, *pwalletMain)) {
+                    LogPrintf("%s - Can't sign\n", __func__);
+                }
+            }
         }
         CValidationState state;
         if (!ProcessNewBlock(state, NULL, pblock))
