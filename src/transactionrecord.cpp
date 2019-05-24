@@ -434,7 +434,8 @@ std::vector<TransactionRecord> TransactionRecord::decomposeTransaction(const CWa
                         std::string opCode(vOpCode.begin(), vOpCode.end());
 
                         CPeerlessBet plBet;
-                        if (CPeerlessBet::FromOpCode(opCode, plBet)) {
+                        CChainGamesBet cgBet;
+                        if (CPeerlessBet::FromOpCode(opCode, plBet) || CChainGamesBet::FromOpCode(opCode, cgBet)) {
                             isBet = true;
                         }
                     }
