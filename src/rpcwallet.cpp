@@ -437,6 +437,64 @@ UniValue listbets(const UniValue& params, bool fHelp)
     return ret;
 }
 
+bool GetChainGamesPayoutTX(uint32_t nEventId, int nBetHeight, CTransaction& payoutTransaction){
+    CBlockIndex *BlocksIndex = NULL;
+    int nDepth = (Params().NetworkID() == CBaseChainParams::MAIN) ? 14400 : 14400;
+    int nBlockCount = 0;
+    BlocksIndex = chainActive[nBetHeight];
+    
+    while (BlocksIndex && nBlockCount < nDepth) {
+        CBlock block;
+        ReadBlockFromDisk(block, BlocksIndex);
+
+        BOOST_FOREACH (CTransaction& tx, block.vtx) {
+
+            const CTxIn &txin = tx.vin[0];
+            bool validTx = IsValidOracleTx(txin);
+
+            // Check each TX out for values
+            for (unsigned int i = 0; i < tx.vout.size(); i++) {
+                const CTxOut &txout = tx.vout[i];
+                std::string scriptPubKey = txout.scriptPubKey.ToString();
+
+                // Find OP_RETURN transactions
+                if(scriptPubKey.length() > 0 && strncmp(scriptPubKey.c_str(), "OP_RETURN", 9) == 0) {
+
+                    std::vector<unsigned char> vOpCode = ParseHex(scriptPubKey.substr(9, string::npos));
+                    std::string OpCode(vOpCode.begin(), vOpCode.end());
+
+                    // Find a matching result transaction
+                    CChainGamesResult cgResultTmp;
+                    if (validTx && cgResultTmp.FromScript(txout.scriptPubKey)) {
+                        if (cgResultTmp.nEventId == (uint16_t)nEventId) {
+                            if (!chainActive.Next(BlocksIndex)) return false;
+                            ReadBlockFromDisk(block, chainActive.Next(BlocksIndex));
+                            payoutTransaction = block.vtx[1];
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        BlocksIndex = chainActive.Next(BlocksIndex);
+        nBlockCount++;
+    }
+    return false;
+}
+
+bool GetBetPayoutAddress(const CTransaction txBet, CTxDestination& destPayout) {
+    const CTxIn &txin = txBet.vin[0];
+    COutPoint prevout = txin.prevout;
+
+    CTransaction txPrev;
+    uint256 hashBlock;
+    if (GetTransaction(prevout.hash, txPrev, hashBlock, true)) {
+        ExtractDestination( txPrev.vout[prevout.n].scriptPubKey, destPayout);
+        return true;
+    }
+    return false;
+}
 UniValue listchaingamesbets(const UniValue& params, bool fHelp)
 {
     // TODO The command-line parameters for this command aren't handled as.
@@ -509,6 +567,19 @@ UniValue listchaingamesbets(const UniValue& params, bool fHelp)
                     if (CChainGamesBet::FromOpCode(opCode, cgBet)) {
                         UniValue entry(UniValue::VOBJ);
                         entry.push_back(Pair("tx-id", txHash.ToString().c_str()));
+
+                        // Get the payout address: the first input's address
+                        CTxDestination destPayout;
+                        if (GetBetPayoutAddress(CTransaction(*pwtx), destPayout)) {
+                            entry.push_back(Pair("bet-address", CBitcoinAddress(destPayout).ToString()));
+                        }
+
+                        const CBlockIndex* pindexWtx;
+                        const int nBetDepth = pwtx->GetDepthInMainChain(pindexWtx, false);
+                        CTransaction cgPayoutTx;
+                        if (nBetDepth > 0 && GetChainGamesPayoutTX(cgBet.nEventId, pindexWtx->nHeight, cgPayoutTx)){
+                            entry.push_back(Pair("payout-tx", cgPayoutTx.GetHash().ToString()));
+                        }
                         entry.push_back(Pair("event-id", (uint64_t) cgBet.nEventId));
                         entry.push_back(Pair("amount", ValueFromAmount(txout.nValue)));
                         ret.push_back(entry);
