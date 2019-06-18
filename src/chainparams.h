@@ -159,8 +159,8 @@ public:
     int BetPlaceTimeoutBlocks() const { return nBetPlaceTimeoutBlocks; }
 
     /** temp worarounds **/
-    int ZerocoinCheckTX() const { return nZerocoinCheckTX; }
-    int ZerocoinCheckTXexclude() const { return nZerocoinCheckTXexclude; }
+    int BlocksizeCheckExcludeStart() const { return nBlocksizeCheckExcludeStart; }
+    int BlocksizeCheckExcludeEnd() const { return nBlocksizeCheckExcludeEnd; }
 
 protected:
     CChainParams() {}
@@ -253,8 +253,8 @@ protected:
     int nBetPlaceTimeoutBlocks;
 
     // workarounds
-    int nZerocoinCheckTX;
-    int nZerocoinCheckTXexclude;
+    int nBlocksizeCheckExcludeStart;
+    int nBlocksizeCheckExcludeEnd;
 };
 
 /**

@@ -3307,30 +3307,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
 
     // Validate bet payouts nExpectedMint against the block pindex->nMint to ensure reward wont pay to much.
-    /*  **TODO**
-        *
-        * Kokary: there are some oddities with fee calculation:
-        * - Coinstake transactions do have fees, resulting in rougly 4400 satoshi less mints
-        * - When there are no masternodes to pay, those MN rewards are not paid, resulting in 1*COIN less than expected mints
-        * - Testnet is polluted with test coinstake payouts between block 15195 and 15220
-        * A 'safe' check that also checks for underminting coins would be something like this:
-        *     if ((pindex->nHeight < 15195 || pindex->nHeight > 15220) && (pindex->nMint > nExpectedMint || pindex->nMint < (nExpectedMint - 2*COIN) || !IsBlockValueValid( block, nExpectedMint, pindex->nMint )) )
-        *         return state.DoS(100, error("ConnectBlock() : reward pays wrong amount (actual=%s vs limit=%s)", FormatMoney(pindex->nMint), FormatMoney(nExpectedMint)), REJECT_INVALID, "bad-cb-amount");
-        * Though if we keep this check for minimum mint, it should be moved to IsBlockValueValid().
-     */
-    /*
-    if (Params().NetworkID() == CBaseChainParams::TESTNET && (pindex->nHeight >= Params().ZerocoinCheckTXexclude() || pindex->nHeight <= Params().ZerocoinCheckTX())) {
-        LogPrintf("Skipping validation of mint size on testnet subset");
-    } else if (pindex->nMint > nExpectedMint || pindex->nMint < (nExpectedMint - 2*COIN) || !IsBlockValueValid( block, nExpectedMint, pindex->nMint)) {
+    if (!IsBlockValueValid( block, nExpectedMint, pindex->nMint)) {
         return state.DoS(100, error("ConnectBlock() : reward pays wrong amount (actual=%s vs limit=%s)", FormatMoney(pindex->nMint), FormatMoney(nExpectedMint)), REJECT_INVALID, "bad-cb-amount");
     }
-    */
     if (!IsBlockPayoutsValid(vExpectedAllPayouts, block)) {
-        if (Params().NetworkID() == CBaseChainParams::TESTNET && (pindex->nHeight >= Params().ZerocoinCheckTXexclude() && pindex->nHeight <= Params().ZerocoinCheckTX())) {
-            LogPrintf("ConnectBlock() - Skipping validation of bet payouts on testnet subset : Bet payout TX's don't match up with block payout TX's at block %i\n", pindex->nHeight);
-        } else  {
-            return state.DoS(100, error("ConnectBlock() : Bet payout TX's don't match up with block payout TX's %i ", pindex->nHeight), REJECT_INVALID, "bad-cb-payout");
-        }
+        return state.DoS(100, error("ConnectBlock() : Bet payout TX's don't match up with block payout TX's %i ", pindex->nHeight), REJECT_INVALID, "bad-cb-payout");
     }
 
     // Clear all the payout vectors.

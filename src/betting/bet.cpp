@@ -127,6 +127,23 @@ int64_t GetCGBlockPayouts(std::vector<CBetOut>& vexpectedCGPayouts, CAmount& nMN
  */
 bool IsBlockPayoutsValid(std::vector<CBetOut> vExpectedPayouts, CBlock block)
 {
+    CBlockIndex* pindexPrev = chainActive.Tip();
+    if (pindexPrev == NULL) return true;
+
+    int nHeight = 0;
+    if (pindexPrev->GetBlockHash() == block.hashPrevBlock) {
+        nHeight = pindexPrev->nHeight + 1;
+    } else { //out of order
+        BlockMap::iterator mi = mapBlockIndex.find(block.hashPrevBlock);
+        if (mi != mapBlockIndex.end() && (*mi).second)
+            nHeight = (*mi).second->nHeight + 1;
+    }
+
+    if (nHeight >= Params().BlocksizeCheckExcludeStart() && nHeight <= Params().BlocksizeCheckExcludeEnd()){
+        LogPrintf("Excluding block size check\n");
+        return true;
+    }
+
     unsigned long size = vExpectedPayouts.size();
 
     // If we have payouts to validate.

@@ -338,8 +338,8 @@ public:
         nSupplyBeforeFakeSerial = 0;
 
         // workarond fixes
-        nZerocoinCheckTXexclude = 15195;
-        nZerocoinCheckTX = 50228;
+        nBlocksizeCheckExcludeStart = 15195;
+        nBlocksizeCheckExcludeEnd = 66700;                              // After updating the chaingame format
 
         //! Modify the testnet genesis block so the timestamp is valid for a later start.
         genesis.nTime = 1518696182;

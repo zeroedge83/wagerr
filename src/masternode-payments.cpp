@@ -192,6 +192,10 @@ bool IsBlockValueValid(const CBlock& block, CAmount nExpectedValue, CAmount nMin
     if (nHeight == 0) {
         LogPrint("masternode","IsBlockValueValid() : WARNING: Couldn't find previous block\n");
     }
+    if (nHeight >= Params().BlocksizeCheckExcludeStart() && nHeight <= Params().BlocksizeCheckExcludeEnd()){
+        LogPrintf("Excluding block size check\n");
+        return true;
+    }
 
     //LogPrintf("XX69----------> IsBlockValueValid(): nMinted: %d, nExpectedValue: %d\n", FormatMoney(nMinted), FormatMoney(nExpectedValue));
 
@@ -200,7 +204,8 @@ bool IsBlockValueValid(const CBlock& block, CAmount nExpectedValue, CAmount nMin
         if (nHeight % Params().GetBudgetCycleBlocks() < 100) {
             return true;
         } else {
-            if (nMinted > nExpectedValue) {
+            if (nHeight > Params().BetV1EndHeight() && nMinted > nExpectedValue) {
+                LogPrintf("Wrong block size\n");
                 return false;
             }
         }
@@ -208,15 +213,25 @@ bool IsBlockValueValid(const CBlock& block, CAmount nExpectedValue, CAmount nMin
 
         //are these blocks even enabled
         if (!IsSporkActive(SPORK_13_ENABLE_SUPERBLOCKS)) {
-            // An alternative check would be: if ((nHeight < 15195 || nHeight > 15220) && (nMinted > nExpectedValue || nMinted < (nExpectedValue - 2*COIN)) )
-            return nMinted <= nExpectedValue;
+            // Take into account:
+            // - Wagerr staking nodes do not collect Wagerr tx fees.
+            // - There's a fee payment for coinstake transactions, resulting in roughly 4400 satoshi less mint than the expected value
+            // - When tere are no masternodes to pay, the MN rewards are not paid out, potentially resulting in 1 WGR less mint than the expected value
+            // To be on the safe side, we're allowing staking nodes to mint 2 WGR less than the expected value.
+            if (!(nMinted > nExpectedValue || nMinted < (nExpectedValue - 2*COIN))) {
+                return true;
+            } else {
+                LogPrintf("Wrong block size\n");
+                return false;
+            }
         }
 
         if (budget.IsBudgetPaymentBlock(nHeight)) {
             //the value of the block is evaluated in CheckBlock
             return true;
         } else {
-            if (nMinted > nExpectedValue) {
+            if (nMinted > nExpectedValue || nMinted < (nExpectedValue - 2*COIN)) {
+                LogPrintf("Wrong block size\n");
                 return false;
             }
         }
