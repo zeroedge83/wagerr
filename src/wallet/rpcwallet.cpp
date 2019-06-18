@@ -1083,7 +1083,7 @@ UniValue getchaingamesinfo(const UniValue& params, bool fHelp)
         BlocksIndex = chainActive.Next(BlocksIndex);
     }
 
-    if (resultHeight > Params().BetStartHeight()) {
+    if (resultHeight > Params().BetV2StartHeight()) {
         std::vector<CBetOut> betOuts = GetCGLottoBetPayouts(resultHeight);
         for (auto betOut : betOuts) {
             if (!winningBetFound && betOut.nEventId == eventID) {

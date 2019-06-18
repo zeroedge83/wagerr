@@ -485,7 +485,7 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet* pwallet, 
             std::vector<CBetOut> vCGLottoPayouts;
             CAmount nMNBetReward = 0;
 
-            if( nHeight > Params().BetStartHeight()) {
+            if( nHeight > Params().BetV2StartHeight()) {
                 // Get the PL and CG bet payout TX's so we can calculate the winning bet vector which is used to mint coins and payout bets.
                 vPLPayouts = GetBetPayouts(nHeight - 1);
                 vCGLottoPayouts = GetCGLottoBetPayouts(nHeight - 1);

@@ -164,7 +164,9 @@ public:
         nZerocoinStartHeight = 700;            // Start accumulation coins here - first zerocoin mint occurs at block
 
         /** Bet related parameters **/
-        nBetStartHeight = 298386;                                       // The block that betting protocols become active.
+        nBetV1StartHeight = 298386;                                      // The block that V1 betting protocols become active (Mainnet).
+        nBetV1EndHeight = 692693;                                        // The block that V1 betting protocols stopped being active (Mainnet).
+        nBetV2StartHeight = 720000;                                      // The block that V2 betting protocols become active (Mainnet).
         vOracleWalletAddrs = {"WTogNAzaHf9oEbBoAv9RA49FdxyWaGLmdZ"};    // Oracle Masternode Event & Result Posting Wallet Addresses.
         nBetBlocksIndexTimespan = 23040;                                // Currently checking back 2 weeks for events and bets for each result.  (With approx. 2 days buffer).
         strDevPayoutAddr = "Wm5om9hBJTyKqv5FkMSfZ2FDMeGp12fkTe";        // Development fund payout address.
@@ -314,7 +316,9 @@ public:
         nPublicZCSpends = 1000000;
 
         /** Bet related parameters **/
-        nBetStartHeight = 26080;                                        // The block that betting protocols become active (Testnet).
+        nBetV1StartHeight = 15190;                                      // The block that V1 betting protocols become active (Testnet).
+        nBetV1EndHeight = 15190;                                        // The block that V1 betting protocols stopped being active (Testnet).
+        nBetV2StartHeight = 26080;                                      // The block that V2 betting protocols become active (Testnet).
         vOracleWalletAddrs = {"TGFKr64W3tTMLZrKBhMAou9wnQmdNMrSG2",     // Oracle Masternode Event & Result Posting Wallet Address (Testnet).
                               "TWM5BQzfjDkBLGbcDtydfuNcuPfzPVSEhc" };
         nBetBlocksIndexTimespan = 23040;                                // Currently checking back 2 weeks for events and bets for each result. (With approx. 2 days buffer).

@@ -2848,7 +2848,7 @@ bool RecalculateWGRSupply(int nHeightStart)
                 if (i == 0 && tx.IsCoinStake())
                     continue;
 
-                if (pindex->nHeight >= Params().BetStartHeight()) {
+                if (pindex->nHeight >= Params().BetV1StartHeight()) {
                     if (tx.vout[i].scriptPubKey.IsUnspendable())
                         continue;
                 }
@@ -3245,7 +3245,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     pindex->nMint = pindex->nMoneySupply - nMoneySupplyPrev + nFees;
     
     // adjust MoneySupply to account for WGR bet/burned, after first calculating actual Mint (pindex->nMint above)
-    if (pindex->nHeight >= Params().BetStartHeight() ) {
+    if (pindex->nHeight >= Params().BetV1StartHeight() ) {
         pindex->nMoneySupply = nMoneySupplyPrev + nValueOut - nValueIn - nValueBurned;
     }
 //    LogPrintf("XX69----------> ConnectBlock(): nValueOut: %s, nValueIn: %s, nFees: %s, nMint: %s zWgrSpent: %s\n",
@@ -3268,7 +3268,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     std::vector<CBetOut> vExpectedPLPayouts;
     std::vector<CBetOut> vExpectedCGLottoPayouts;
 
-    if( pindex->nHeight > Params().BetStartHeight()) {
+    if( pindex->nHeight > Params().BetV2StartHeight()) {
         std::string strBetNetBlockTxt;
         std::ostringstream BetNetBlockTxt;
         std::ostringstream BetNetExpectedTxt;
@@ -4952,7 +4952,7 @@ bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex** ppindex, 
 
     bool eiUpdated = false;
     // Look through the block for any events, results or mapping TX.
-    if (pindex->nHeight > Params().BetStartHeight()) {
+    if (pindex->nHeight > Params().BetV2StartHeight()) {
         for (CTransaction& tx : block.vtx) {
 
             // Ensure the event TX has come from Oracle wallet.
