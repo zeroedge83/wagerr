@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include "primitives/transaction.h"
+#include "script/standard.h"
 #include <vector>
 
 class CBlock;
@@ -41,5 +42,37 @@ void BitcoinMiner(CWallet* pwallet, bool fProofOfStake);
 
 extern double dHashesPerSec;
 extern int64_t nHPSTimerStart;
+
+class BettorStats
+{
+public:
+    CTxDestination bettor;
+    CAmount nBetValue;
+    CAmount nWinValue;
+    uint64_t nBetsPlaced;
+    uint64_t nBetsWon;
+
+    BettorStats()
+    {
+        SetNull();
+    }
+
+    BettorStats(CTxDestination bettorIn)
+    {
+        SetNull();
+        bettor = bettorIn;
+
+    }
+
+    void SetNull()
+    {
+        bettor = CNoDestination();
+        nBetValue = 0;
+        nWinValue = 0;
+        nBetsPlaced = 0;
+        nBetsWon = 0;
+    }
+};
+std::map<CTxDestination, BettorStats> GetBettorStats(int height, int nrOfBlocksScanned, std::map<CTxDestination, BettorStats>& mapBettorStats);
 
 #endif // BITCOIN_MINER_H

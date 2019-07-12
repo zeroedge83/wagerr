@@ -10,6 +10,7 @@
 #include "base58.h"
 #include "core_io.h"
 #include "init.h"
+#include "miner.h"
 #include "net.h"
 #include "netbase.h"
 #include "rpc/server.h"
@@ -184,6 +185,89 @@ UniValue listevents(const UniValue& params, bool fHelp)
     return ret;
 }
 
+UniValue listbettors(const UniValue& params, bool fHelp)
+{
+    if (fHelp || (params.size() > 0))
+        throw runtime_error(
+            "listevents\n"
+            "\nGet live Wagerr events.\n"
+
+            "\nResult:\n"
+            "[\n"
+            "  {\n"
+            "    \"id\": \"xxx\",         (string) The event ID\n"
+            "    \"name\": \"xxx\",       (string) The name of the event\n"
+            "    \"round\": \"xxx\",      (string) The round of the event\n"
+            "    \"starting\": n,         (numeric) When the event will start\n"
+            "    \"teams\": [\n"
+            "      {\n"
+            "        \"name\": \"xxxx\",  (string) Team to win\n"
+            "        \"odds\": n          (numeric) Odds to win\n"
+            "      }\n"
+            "      ,...\n"
+            "    ]\n"
+            "  }\n"
+            "]\n"
+
+            "\nExamples:\n" +
+            HelpExampleCli("listevents", "") + HelpExampleRpc("listevents", ""));
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    int nCurrentHeight = chainActive.Height();
+
+    std::map<CTxDestination, BettorStats> mapBettorStats;
+//    for (int i=nCurrentHeight-1440; i<nCurrentHeight; i++){
+    GetBettorStats(nCurrentHeight, 1440*7*8, mapBettorStats);
+//    }
+
+    // Find all bets placed in the last x blocks
+
+    // Find all payout transactions in the last x blocks
+
+    typedef std::function<bool(std::pair<CTxDestination, BettorStats>, std::pair<CTxDestination, BettorStats>)> Comparator;
+	Comparator compFunctor =
+			[](std::pair<CTxDestination, BettorStats> elem1, std::pair<CTxDestination, BettorStats> elem2)
+			{
+				return elem1.second.nWinValue < elem2.second.nWinValue;
+			};
+	std::set<std::pair<CTxDestination, BettorStats>, Comparator> setBettorStats(
+			mapBettorStats.begin(), mapBettorStats.end(), compFunctor);
+
+    UniValue ret(UniValue::VARR);
+
+	for (std::pair<CTxDestination, BettorStats> element : setBettorStats)
+    {
+        UniValue entry(UniValue::VOBJ);
+        entry.push_back(Pair("payoutAddr", CBitcoinAddress(element.second.bettor).ToString().c_str()));
+        entry.push_back(Pair("amountBet", ValueFromAmount(element.second.nBetValue)));
+        entry.push_back(Pair("amountWon", ValueFromAmount(element.second.nWinValue)));
+        uint64_t nBetsPlaced = element.second.nBetsPlaced;
+        uint64_t nBetsWon = element.second.nBetsWon;
+        entry.push_back(Pair("betsPlaced", nBetsPlaced));
+        entry.push_back(Pair("betsWon", nBetsWon));
+
+        ret.push_back(entry);
+    }
+
+/*
+    for (auto it=mapBettorStats.begin(); it!=mapBettorStats.end(); ++it) {
+        UniValue entry(UniValue::VOBJ);
+        entry.push_back(Pair("payoutAddr", CBitcoinAddress(it->second.bettor).ToString().c_str()));
+        entry.push_back(Pair("amountBet", ValueFromAmount(it->second.nBetValue)));
+        entry.push_back(Pair("amountWon", ValueFromAmount(it->second.nWinValue)));
+        uint64_t nBetsPlaced = it->second.nBetsPlaced;
+        uint64_t nBetsWon = it->second.nBetsWon;
+        entry.push_back(Pair("betsPlaced", nBetsPlaced));
+        entry.push_back(Pair("betsWon", nBetsWon));
+
+        ret.push_back(entry);
+    }
+*/
+
+    return ret;
+}
+
 // TODO There is a lot of code shared between `bets` and `listtransactions`.
 // This would ideally be abstracted when time allows.
 UniValue listbets(const UniValue& params, bool fHelp)
@@ -261,10 +345,11 @@ UniValue listbets(const UniValue& params, bool fHelp)
                             continue;
                         }
 
+                        const CTxIn& txin = (*pwtx).vin[0];
+
                         UniValue entry(UniValue::VOBJ);
                         entry.push_back(Pair("tx-id", txHash.ToString().c_str()));
-                        entry.push_back(Pair("event-id", strs[2]));
-                        entry.push_back(Pair("team-to-win", strs[3]));
+                        entry.push_back(Pair("payout address", strs[2]));
                         entry.push_back(Pair("amount", ValueFromAmount(txout.nValue)));
                         ret.push_back(entry);
                     }
