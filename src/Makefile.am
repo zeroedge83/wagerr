@@ -107,6 +107,7 @@ BITCOIN_CORE_H = \
   compat/endian.h \
   compat/sanity.h \
   compressor.h \
+  consensus/merkle.h \
   primitives/block.h \
   primitives/transaction.h \
   core_io.h \
@@ -391,6 +392,7 @@ libbitcoin_common_a_SOURCES = \
   chainparams.cpp \
   coins.cpp \
   compressor.cpp \
+  consensus/merkle.cpp \
   primitives/block.cpp \
   zwgr/deterministicmint.cpp \
   primitives/transaction.cpp \
