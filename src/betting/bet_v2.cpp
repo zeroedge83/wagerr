@@ -625,22 +625,23 @@ void GetCGLottoBetPayoutsV2(int height, std::vector<CBetOut>& vexpectedCGLottoBe
 
         // Choose winner from candidates who entered the lotto and payout their winnings.
         if (candidates.size() == 1) {
-             // Refund the single entrant.
-             CAmount noOfBets = candidates.size();
-             std::string winnerAddress = candidates[0].first;
-             CAmount entranceFee = eventFee;
-             CAmount winnerPayout = eventFee;
 
- 	         LogPrintf("\nCHAIN GAMES PAYOUT. ID: %i \n", allChainGames[currResult].nEventId);
- 	         LogPrintf("Total number of bettors: %u , Entrance Fee: %u \n", noOfBets, entranceFee);
- 	         LogPrintf("Winner Address: %u \n", winnerAddress);
- 	         LogPrintf(" This Lotto was refunded as only one person bought a ticket.\n" );
+            // Refund the single entrant.
+            CAmount noOfBets = candidates.size();
+            std::string winnerAddress = candidates[0].first;
+            CAmount entranceFee = eventFee;
+            CAmount winnerPayout = eventFee;
 
-             // Only add valid payouts to the vector.
-             if (winnerPayout > 0) {
-                 vPayoutsInfo.emplace_back(candidates[0].second, PayoutType::chainGamesRefund);
-                 vexpectedCGLottoBetPayouts.emplace_back(winnerPayout, GetScriptForDestination(CBitcoinAddress(winnerAddress).Get()), entranceFee, allChainGames[currResult].nEventId);
-             }
+            LogPrintf("\nCHAIN GAMES PAYOUT. ID: %i \n", allChainGames[currResult].nEventId);
+            LogPrintf("Total number of bettors: %u , Entrance Fee: %u \n", noOfBets, entranceFee);
+            LogPrintf("Winner Address: %u \n", winnerAddress);
+            LogPrintf(" This Lotto was refunded as only one person bought a ticket.\n" );
+
+            // Only add valid payouts to the vector.
+            if (winnerPayout > 0) {
+                vPayoutsInfo.emplace_back(candidates[0].second, PayoutType::chainGamesRefund);
+                vexpectedCGLottoBetPayouts.emplace_back(winnerPayout, GetScriptForDestination(CBitcoinAddress(winnerAddress).Get()), entranceFee, allChainGames[currResult].nEventId);
+            }
         }
         else if (candidates.size() >= 2) {
             // Use random number to choose winner.
