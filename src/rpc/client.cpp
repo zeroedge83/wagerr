@@ -94,6 +94,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
         {"listsinceblock", 2},
         {"sendmany", 1},
         {"sendmany", 2},
+        {"sendmasternodeowners", 1},
         {"addmultisigaddress", 0},
         {"addmultisigaddress", 1},
         {"createmultisig", 0},

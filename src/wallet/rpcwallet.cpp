@@ -5047,3 +5047,106 @@ UniValue clearspendcache(const UniValue& params, bool fHelp)
     }
     throw JSONRPCError(RPC_WALLET_ERROR, "Error: Spend cache not cleared!");
 }
+
+UniValue sendmasternodeowners(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 2 || params.size() > 4)
+        throw std::runtime_error(
+            "sendmasternodeowners \"fromaccount\" \"amount\" ( minconf \"comment\" )\n"
+            "\nSend amount to all masternode owners. Amount is a double-precision floating point number." +
+            HelpRequiringPassphrase() + "\n"
+
+            "\nArguments:\n"
+            "1. \"fromaccount\"         (string, required) The account to send the funds from, can be \"\" for the default account\n"
+            "2. \"amount\"             (string, required) The amount to be distributed over all masternodes\n"
+            "3. minconf                 (numeric, optional, default=6) Only use the balance confirmed at least this many times.\n"
+            "4. \"comment\"             (string, optional) A comment\n"
+
+            "\nResult:\n"
+            "\"transactionid\"          (string) The transaction id for the send. Only 1 transaction is created regardless of \n"
+            "                                    the number of addresses.\n"
+
+            "\nExamples:\n"
+            "\nSend amount to masternode owners:\n" +
+            HelpExampleCli("sendmasternodeowners", "\"bets20180730\" \"4.721\"") +
+            "\nSend amount to masternode owners setting the confirmation and comment:\n" +
+            HelpExampleCli("sendmasternodeowners", "\"bets20180730\" \"4.721\" 6 \"testing\"") +
+            "\nAs a json rpc call\n" +
+            HelpExampleRpc("sendmasternodeowners", "\"bets20180730\", \"4.721\", 6, \"testing\""));
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    std::string strAccount = AccountFromValue(params[0]);
+    CAmount nToDistributeAmount = AmountFromValue(params[1]);
+
+    /*
+     * First implementation: assume all tx.outs fit in 1 tx
+     * Second implementation: take 2 vouts, with dev fund and burn as the 2 change addresses
+     */
+
+    UniValue paramsListmasternodes(UniValue::VARR);
+
+    std::string vStr("ENABLED");
+    paramsListmasternodes.push_back(vStr);
+
+    UniValue UVmasternodelist = listmasternodes(paramsListmasternodes, false);
+
+    int nMinDepth = 6;
+    if (params.size() > 2)
+        nMinDepth = params[2].get_int();
+
+    CWalletTx wtx;
+    wtx.strFromAccount = strAccount;
+    if (params.size() > 3 && !params[3].isNull() && !params[3].get_str().empty())
+        wtx.mapValue["comment"] = params[3].get_str();
+
+    std::set<CBitcoinAddress> setAddress;
+    std::map<std::string, CAmount> mapMNs;
+    std::vector<std::pair<CScript, CAmount> > vecSend;
+
+    if (UVmasternodelist.size() == 0)
+            throw JSONRPCError(RPC_IN_WARMUP, std::string("Masternode sync has not finished"));
+
+    CAmount nAmount = nToDistributeAmount / UVmasternodelist.size();
+    CAmount totalAmount = 0;
+
+    for (const UniValue& mnToPay : UVmasternodelist.getValues()) {
+        std::string mnToPayAddress = mnToPay.getValues()[5].getValStr();
+        mapMNs[mnToPayAddress] += nAmount;
+    }
+    for (const auto& MNToPay : mapMNs) {
+        std::string mnToPayAddress = MNToPay.first;
+        CAmount amountToPay = MNToPay.second;
+        CBitcoinAddress address(mnToPayAddress);
+        if (!address.IsValid())
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Wagerr address: ")+mnToPayAddress);
+
+        if (setAddress.count(address))
+            throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ")+mnToPayAddress);
+        setAddress.insert(address);
+
+        CScript scriptPubKey = GetScriptForDestination(address.Get());
+        totalAmount += amountToPay;
+
+        vecSend.push_back(make_pair(scriptPubKey, amountToPay));
+    }
+
+    EnsureWalletIsUnlocked();
+
+    // Check funds
+    CAmount nBalance = GetAccountBalance(strAccount, nMinDepth, ISMINE_SPENDABLE);
+    if (totalAmount > nBalance)
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Account has insufficient funds");
+
+    // Send
+    CReserveKey keyChange(pwalletMain);
+    CAmount nFeeRequired = 0;
+    std::string strFailReason;
+    bool fCreated = pwalletMain->CreateTransaction(vecSend, wtx, keyChange, nFeeRequired, strFailReason);
+    if (!fCreated)
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, strFailReason);
+    if (!pwalletMain->CommitTransaction(wtx, keyChange))
+        throw JSONRPCError(RPC_WALLET_ERROR, "Transaction commit failed");
+
+    return wtx.GetHash().GetHex();
+}
