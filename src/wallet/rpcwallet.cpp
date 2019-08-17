@@ -4950,13 +4950,22 @@ UniValue sendmasternodeowners(const UniValue& params, bool fHelp)
         wtx.mapValue["comment"] = params[3].get_str();
 
     set<CBitcoinAddress> setAddress;
+    std::map<std::string, CAmount> mapMNs;
     vector<pair<CScript, CAmount> > vecSend;
+
+    if (UVmasternodelist.size() == 0)
+            throw JSONRPCError(RPC_IN_WARMUP, string("Masternode sync has not finished"));
 
     CAmount nAmount = nToDistributeAmount / UVmasternodelist.size();
     CAmount totalAmount = 0;
 
     for (const UniValue& mnToPay : UVmasternodelist.getValues()) {
         string mnToPayAddress = mnToPay.getValues()[5].getValStr();
+        mapMNs[mnToPayAddress] += nAmount;
+    }
+    for (const auto& MNToPay : mapMNs) {
+        string mnToPayAddress = MNToPay.first;
+        CAmount amountToPay = MNToPay.second;
         CBitcoinAddress address(mnToPayAddress);
         if (!address.IsValid())
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, string("Invalid Wagerr address: ")+mnToPayAddress);
@@ -4966,9 +4975,9 @@ UniValue sendmasternodeowners(const UniValue& params, bool fHelp)
         setAddress.insert(address);
 
         CScript scriptPubKey = GetScriptForDestination(address.Get());
-        totalAmount += nAmount;
+        totalAmount += amountToPay;
 
-        vecSend.push_back(make_pair(scriptPubKey, nAmount));
+        vecSend.push_back(make_pair(scriptPubKey, amountToPay));
     }
 
     EnsureWalletIsUnlocked();
