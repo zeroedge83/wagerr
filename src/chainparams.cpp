@@ -79,11 +79,12 @@ static const Checkpoints::CCheckpointData data = {
 static Checkpoints::MapCheckpoints mapCheckpointsTestnet =
     boost::assign::map_list_of
     (       0, uint256("00000fdc268f54ff1368703792dc046b1356e60914c2b5b6348032144bcb2de5"))
-    (       1, uint256("00000ee56853cd05cda3148653fe2815075d2251299a23c84de189e70c5d9757"));    // 1567576895   2
+    (       1, uint256("00000ee56853cd05cda3148653fe2815075d2251299a23c84de189e70c5d9757"))     // 1567576895   2
+    (     450, uint256("defe8866695382de16183afd0321d651e91cafe9d7080ed6cc7ab9e17fc1074d"));    // 1567615777   635
 static const Checkpoints::CCheckpointData dataTestnet = {
     &mapCheckpointsTestnet,
-    1567576895,
-    2,
+    1567615777,
+    635,
     1000};
 
 static Checkpoints::MapCheckpoints mapCheckpointsRegtest =
@@ -313,18 +314,18 @@ public:
         nBlockLastGoodCheckpoint = 350; //Last valid accumulator checkpoint (currently we do not have any) *** TODO ***
         nBlockEnforceInvalidUTXO = 350; //Start enforcing the invalid UTXO's
         nInvalidAmountFiltered = 0; //Amount of invalid coins filtered through exchanges, that should be considered valid
-        nBlockZerocoinV2 = 26050; //The block that zerocoin v2 becomes active
+        nBlockZerocoinV2 = 600; //The block that zerocoin v2 becomes active
         nEnforceNewSporkKey = 1536019200; //!> Sporks signed after Tuesday September 4, 2018 12:00:00 AM GMT must use the new spork key
         nRejectOldSporkKey = 1538611200; //!> Reject old spork key after October 4, 2018 12:00:00 AM GMT
 
         // Start enforcing CHECKLOCKTIMEVERIFY (BIP65) rule
-        nBIP65Height = 98580;
+        nBIP65Height = 600;
 
         // Public coin spend enforcement
-        nPublicZCSpends = 116000;
+        nPublicZCSpends = 600;
 
         /** Bet related parameters **/
-        nBetStartHeight = 26080;                                        // The block that betting protocols become active (Testnet).
+        nBetStartHeight = 600;                                        // The block that betting protocols become active (Testnet).
         vOracleWalletAddrs = {"TGFKr64W3tTMLZrKBhMAou9wnQmdNMrSG2",     // Oracle Masternode Event & Result Posting Wallet Address (Testnet).
                               "TWM5BQzfjDkBLGbcDtydfuNcuPfzPVSEhc" };
         nBetBlocksIndexTimespan = 23040;                                // Currently checking back 2 weeks for events and bets for each result. (With approx. 2 days buffer).
@@ -344,8 +345,8 @@ public:
         nSupplyBeforeFakeSerial = 0;
 
         // workarond fixes
-        nZerocoinCheckTXexclude = 15195;
-        nZerocoinCheckTX = 50228;
+        nZerocoinCheckTXexclude = -1;
+        nZerocoinCheckTX = -1;
 
         //! Modify the testnet genesis block so the timestamp is valid for a later start.
         genesis.nTime = 1518696182;
