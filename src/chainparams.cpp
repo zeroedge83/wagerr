@@ -80,11 +80,12 @@ static Checkpoints::MapCheckpoints mapCheckpointsTestnet =
     boost::assign::map_list_of
     (       0, uint256("00000fdc268f54ff1368703792dc046b1356e60914c2b5b6348032144bcb2de5"))
     (       1, uint256("00000ee56853cd05cda3148653fe2815075d2251299a23c84de189e70c5d9757"))     // 1567576895   2
-    (     450, uint256("defe8866695382de16183afd0321d651e91cafe9d7080ed6cc7ab9e17fc1074d"));    // 1567615777   635
+    (     450, uint256("defe8866695382de16183afd0321d651e91cafe9d7080ed6cc7ab9e17fc1074d"))     // 1567615777   635
+    (     469, uint256("c4751ac19dedcce9b51243f9d333d33018099ba0757c23842780d814e84aeef1"));    // 1567623780   673
 static const Checkpoints::CCheckpointData dataTestnet = {
     &mapCheckpointsTestnet,
     1567615777,
-    635,
+    673,
     1000};
 
 static Checkpoints::MapCheckpoints mapCheckpointsRegtest =
@@ -309,8 +310,8 @@ public:
         nZerocoinAccumulationStartHeight = 350;
         nZerocoinStartTime = 1518696183; // GMT: Thursday, 15. February 2018 12:03:03
         nBlockEnforceSerialRange = 1; //Enforce serial range starting this block
-        nBlockRecalculateAccumulators = 1400; //Trigger a recalculation of accumulators
-        nBlockFirstFraudulent = 21012; //First block that bad serials emerged (currently we do not have any) *** TODO ***
+        nBlockRecalculateAccumulators = -1; //Trigger a recalculation of accumulators
+        nBlockFirstFraudulent = 99999999; //First block that bad serials emerged (currently we do not have any) *** TODO ***
         nBlockLastGoodCheckpoint = 350; //Last valid accumulator checkpoint (currently we do not have any) *** TODO ***
         nBlockEnforceInvalidUTXO = 350; //Start enforcing the invalid UTXO's
         nInvalidAmountFiltered = 0; //Amount of invalid coins filtered through exchanges, that should be considered valid
