@@ -181,12 +181,13 @@ public:
         nBIP65Height = 751858;
 
         nBlockStakeModifierV2 = 891276;
+        nBlockTimeProtocolV2 = 2967000;
 
         // Public coin spend enforcement
         nPublicZCSpends = 752800;
 
         // New P2P messages signatures
-        nBlockEnforceNewMessageSignatures = 2967000;
+        nBlockEnforceNewMessageSignatures = nBlockTimeProtocolV2;
 
         nZerocoinStartHeight = 700;            // Start accumulation coins here - first zerocoin mint occurs at block
 
@@ -343,12 +344,13 @@ public:
         nBIP65Height = 600;
 
         nBlockStakeModifierV2 = 92500;
+        nBlockTimeProtocolV2 = 2214000;
 
         // Public coin spend enforcement
         nPublicZCSpends = 600;
 
         // New P2P messages signatures
-        nBlockEnforceNewMessageSignatures = 2214000;
+        nBlockEnforceNewMessageSignatures = nBlockTimeProtocolV2;
 
         /** Bet related parameters **/
         nBetStartHeight = 600;                                        // The block that betting protocols become active (Testnet).
@@ -463,6 +465,7 @@ public:
         nBIP65Height = 1;
 
         nBlockStakeModifierV2 = 400;
+        nBlockTimeProtocolV2 = 999999999;
 
         // Public coin spend enforcement
         nPublicZCSpends = 350;
