@@ -378,6 +378,21 @@ bool CPeerlessEvent::FromOpCode(std::string opCode, CPeerlessEvent &pe)
 }
 
 /**
+ * Performs basic validation of the object
+ * - Odds are set to 0 if they exceed the boundary values
+ * Called after parsing the opcode and before setting the spreads and adding the event to eventsIndex
+ *
+ * @return        None
+ */
+void CPeerlessEvent::Sanitize() {
+    uint64_t maxOdds = Params().MaxEventOdds();
+
+    nHomeOdds = nHomeOdds > maxOdds ? 0 : nHomeOdds;
+    nAwayOdds = nAwayOdds > maxOdds ? 0 : nAwayOdds;
+    nDrawOdds = nDrawOdds > maxOdds ? 0 : nDrawOdds;
+}
+
+/**
  * Convert CPeerlessEvent object data into hex OPCode string.
  *
  * @param pe     The CPeerlessEvent object
@@ -562,6 +577,21 @@ bool CPeerlessUpdateOdds::FromOpCode(std::string opCode, CPeerlessUpdateOdds &pu
     puo.nDrawOdds = FromChars(opCode[15], opCode[16], opCode[17], opCode[18]);
 
     return true;
+}
+
+/**
+ * Performs basic validation of the object
+ * - Odds are set to 0 if they exceed the boundary values
+ * Called after parsing the opcode and before setting the spreads and adding the event to eventsIndex
+ *
+ * @return        None
+ */
+void CPeerlessUpdateOdds::Sanitize() {
+    uint64_t maxOdds = Params().MaxEventOdds();
+
+    nHomeOdds = nHomeOdds > maxOdds ? 0 : nHomeOdds;
+    nAwayOdds = nAwayOdds > maxOdds ? 0 : nAwayOdds;
+    nDrawOdds = nDrawOdds > maxOdds ? 0 : nDrawOdds;
 }
 
 /**
@@ -819,6 +849,20 @@ bool CPeerlessSpreadsEvent::FromOpCode(std::string opCode, CPeerlessSpreadsEvent
 }
 
 /**
+ * Performs basic validation of the object
+ * - Odds are set to 0 if they exceed the boundary values
+ * Called after parsing the opcode and before setting the spreads and adding the event to eventsIndex
+ *
+ * @return        None
+ */
+void CPeerlessSpreadsEvent::Sanitize() {
+    uint64_t maxOdds = Params().MaxEventOdds();
+
+    nHomeOdds = nHomeOdds > maxOdds ? 0 : nHomeOdds;
+    nAwayOdds = nAwayOdds > maxOdds ? 0 : nAwayOdds;
+}
+
+/**
  * Convert CPeerlessSpreadsEvent object data into hex OPCode string.
  *
  * @param pse     The CPeerlessSpreadsEvent Object
@@ -901,6 +945,20 @@ bool CPeerlessTotalsEvent::FromOpCode(std::string opCode, CPeerlessTotalsEvent &
     pte.nUnderOdds = FromChars(opCode[13], opCode[14], opCode[15], opCode[16]);
 
     return true;
+}
+
+/**
+ * Performs basic validation of the object
+ * - Odds are set to 0 if they exceed the boundary values
+ * Called after parsing the opcode and before setting the spreads and adding the event to eventsIndex
+ *
+ * @return        None
+ */
+void CPeerlessTotalsEvent::Sanitize() {
+    uint64_t maxOdds = Params().MaxEventOdds();
+
+    nOverOdds = nOverOdds > maxOdds ? 0 : nOverOdds;
+    nUnderOdds = nUnderOdds > maxOdds ? 0 : nUnderOdds;
 }
 
 /**
@@ -1839,6 +1897,7 @@ std::vector<CBetOut> GetBetPayouts(int height)
 
                             // If the current event matches the result we can now set the odds.
                             if (result.nEventId == pe.nEventId) {
+                                pe.Sanitize();
 
                                 LogPrintf("EVENT OP CODE - %s \n", opCode.c_str());
 
@@ -1883,6 +1942,7 @@ std::vector<CBetOut> GetBetPayouts(int height)
                         // Peerless update odds OP RETURN transaction.
                         CPeerlessUpdateOdds puo;
                         if (eventFound && validOracleTx && CPeerlessUpdateOdds::FromOpCode(opCode, puo) && result.nEventId == puo.nEventId ) {
+                            puo.Sanitize();
 
                             LogPrintf("PUO EVENT OP CODE - %s \n", opCode.c_str());
 
@@ -1903,6 +1963,7 @@ std::vector<CBetOut> GetBetPayouts(int height)
                         // Handle PSE, when we find a Spreads event on chain we need to update the Spreads odds.
                         CPeerlessSpreadsEvent pse;
                         if (eventFound && validOracleTx && CPeerlessSpreadsEvent::FromOpCode(opCode, pse) && result.nEventId == pse.nEventId) {
+                            pse.Sanitize();
 
                             LogPrintf("PSE EVENT OP CODE - %s \n", opCode.c_str());
 
@@ -1957,6 +2018,7 @@ std::vector<CBetOut> GetBetPayouts(int height)
                         // Handle PTE, when we find an Totals event on chain we need to update the Totals odds.
                         CPeerlessTotalsEvent pte;
                         if (eventFound && validOracleTx && CPeerlessTotalsEvent::FromOpCode(opCode, pte) && result.nEventId == pte.nEventId) {
+                            pte.Sanitize();
 
                             LogPrintf("PTE EVENT OP CODE - %s \n", opCode.c_str());
 

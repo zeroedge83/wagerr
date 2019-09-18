@@ -155,6 +155,8 @@ public:
     static bool ToOpCode(CPeerlessEvent pe, std::string &opCode);
     static bool FromOpCode(std::string opCode, CPeerlessEvent &pe);
 
+    void Sanitize();
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -270,6 +272,8 @@ public:
 
     static bool ToOpCode(CPeerlessUpdateOdds puo, std::string &opCode);
     static bool FromOpCode(std::string opCode, CPeerlessUpdateOdds &puo);
+
+    void Sanitize();
 };
 
 class CChainGamesEvent
@@ -339,6 +343,8 @@ public:
 
     static bool ToOpCode(CPeerlessSpreadsEvent pse, std::string &opCode);
     static bool FromOpCode(std::string opCode, CPeerlessSpreadsEvent &pse);
+
+    void Sanitize();
 };
 
 class CPeerlessTotalsEvent
@@ -354,6 +360,8 @@ public:
 
     static bool ToOpCode(CPeerlessTotalsEvent pte, std::string &opCode);
     static bool FromOpCode(std::string opCode, CPeerlessTotalsEvent &pte);
+
+    void Sanitize();
 };
 
 class CMapping
