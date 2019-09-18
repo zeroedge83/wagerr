@@ -4897,6 +4897,7 @@ bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex** ppindex, 
                         // If events found in block add them to the events index.
                         CPeerlessEvent plEvent;
                         if (CPeerlessEvent::FromOpCode(opCode, plEvent)) {
+                            plEvent.Sanitize();
                             CEventDB::AddEvent(plEvent);
                             eiUpdated = true;
                         }
@@ -4912,6 +4913,8 @@ bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex** ppindex, 
                         // If update money line odds TX found in block, update the event index.
                         CPeerlessUpdateOdds puo;
                         if (CPeerlessUpdateOdds::FromOpCode(opCode, puo)) {
+                            puo.Sanitize();
+
                             SetEventMLOdds(puo);
                             eiUpdated = true;
                         }
@@ -4919,6 +4922,8 @@ bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex** ppindex, 
                         // If spread odds TX found then update the spread odds for that event object.
                         CPeerlessSpreadsEvent spreadEvent;
                         if (CPeerlessSpreadsEvent::FromOpCode(opCode, spreadEvent)) {
+                            spreadEvent.Sanitize();
+
                             SetEventSpreadOdds(spreadEvent);
                             eiUpdated = true;
                         }
@@ -4926,6 +4931,8 @@ bool AcceptBlock(CBlock& block, CValidationState& state, CBlockIndex** ppindex, 
                         // If total odds TX found then update the total odds for that event object.
                         CPeerlessTotalsEvent totalsEvent;
                         if (CPeerlessTotalsEvent::FromOpCode(opCode, totalsEvent)) {
+                            totalsEvent.Sanitize();
+
                             SetEventTotalOdds(totalsEvent);
                             eiUpdated = true;
                         }
