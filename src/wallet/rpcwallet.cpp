@@ -1078,7 +1078,7 @@ UniValue getchaingamesinfo(const UniValue& params, bool fHelp)
                     }
                     // Find a matching result transaction
                     CChainGamesResult cgResult;
-                    if (validTx && resultHeight == -1 && cgResult.FromScript(txout.scriptPubKey)) {
+                    if (validTx && resultHeight == -1 && CChainGamesResult::FromOpCode(OpCode, cgResult)) {
                         if (cgResult.nEventId == (uint16_t)eventID) {
                             resultHeight = BlocksIndex->nHeight;
                         }
