@@ -2157,6 +2157,29 @@ std::vector<CBetOut> GetBetPayouts(int height)
     return vExpectedPayouts;
 }
 
+bool CChainGamesResult::FromScript(CScript script) {
+    // LogPrintf("%s - %s\n", __func__, script.ToString());
+
+    CScript::const_iterator pc = script.begin();
+    std::vector<unsigned char> data;
+    opcodetype opcode;
+
+    // Check that we are parsing an OP_RETURN script
+    if (!script.GetOp(pc, opcode, data)) return false;
+    if (opcode != OP_RETURN) return false;
+
+    // Get data block
+    if (!script.GetOp(pc, opcode, data)) return false;
+
+    if (data.size() < 5) return false;
+    if (data[0] != 'B') return false;
+    if (data[1] != BTX_FORMAT_VERSION) return false;
+    if (data[2] != cgResultTxType) return false;
+
+    nEventId = *((uint16_t*)&data[3]);
+
+    return true;
+}
 /**
  * Checks a given block for any Chain Games results.
  *
@@ -2188,22 +2211,11 @@ std::pair<std::vector<CChainGamesResult>,std::vector<std::string>> getCGLottoEve
         if (validResultTx) {
             // Look for result OP RETURN code in the tx vouts.
             for (unsigned int i = 0; i < tx.vout.size(); i++) {
-                const CTxOut &txout = tx.vout[i];
-                std::string scriptPubKey = txout.scriptPubKey.ToString();	
-                totalBlockValue = txout.nValue + totalBlockValue;	
+                CScript script = tx.vout[i].scriptPubKey;
 
-                if (scriptPubKey.length() > 0 && strncmp(scriptPubKey.c_str(), "OP_RETURN", 9) == 0) {	
-                    // Get OP CODE from transactions.	
-                    vector<unsigned char> vOpCode = ParseHex(scriptPubKey.substr(9, string::npos));	
-                    std::string opCode(vOpCode.begin(), vOpCode.end());	
-
-                    CChainGamesResult plResult;	
-                    if (!CChainGamesResult::FromOpCode(opCode, plResult)) {	
-                        continue;	
-                    }	
-
-
-                    chainGameResults.push_back(plResult);	
+                CChainGamesResult cgResult;
+                if (cgResult.FromScript(script)) {
+                    chainGameResults.push_back(cgResult);
                 }
             }
         }
