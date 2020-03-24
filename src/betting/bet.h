@@ -65,6 +65,16 @@ typedef enum MappingTypes {
     tournamentMapping = 0x04
 } MappingTypes;
 
+//
+typedef enum PayoutType {
+    bettingPayout    = 0x01,
+    bettingRefund    = 0x02,
+    bettingReward    = 0x03,
+    chainGamesPayout = 0x04,
+    chainGamesRefund = 0x05,
+    chainGamesReward = 0x06
+} PayoutType;
+
 // Class derived from CTxOut
 // nBetValue is NOT serialized, nor is it included in the hash.
 class CBetOut : public CTxOut {
@@ -531,8 +541,9 @@ typedef struct UniversalBetKey {
     uint32_t blockHeight;
     COutPoint outPoint;
 
-    UniversalBetKey() : blockHeight(0), outPoint(COutPoint()) { }
-    UniversalBetKey(uint32_t height, COutPoint out) : blockHeight(height), outPoint(out) { }
+    explicit UniversalBetKey() : blockHeight(0), outPoint(COutPoint()) { }
+    explicit UniversalBetKey(uint32_t height, COutPoint out) : blockHeight(height), outPoint(out) { }
+    explicit UniversalBetKey(const UniversalBetKey& betKey) : blockHeight{betKey.blockHeight}, outPoint{betKey.outPoint} { }
 
     ADD_SERIALIZE_METHODS;
 
@@ -647,6 +658,36 @@ private:
     BettingUndoVariant undoVariant;
 };
 
+using PayoutInfoKey = UniversalBetKey;
+
+class CPayoutInfo
+{
+public:
+    UniversalBetKey betKey;
+    PayoutType payoutType;
+
+    explicit CPayoutInfo() { }
+    explicit CPayoutInfo(UniversalBetKey &betKey, PayoutType payoutType) : betKey{betKey}, payoutType{payoutType} { }
+    explicit CPayoutInfo(const CPayoutInfo& payoutInfo) : betKey{payoutInfo.betKey}, payoutType{payoutInfo.payoutType} { }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp (Stream& s, Operation ser_action, int nType, int nVersion) {
+        READWRITE(betKey);
+        uint8_t type;
+        if (ser_action.ForRead()) {
+            READWRITE(type);
+            payoutType = (PayoutType) type;
+
+        }
+        else {
+            type = (uint8_t) payoutType;
+            READWRITE(type);
+        }
+    }
+};
+
 class CBettingDB
 {
 public:
@@ -758,6 +799,8 @@ public:
     std::unique_ptr<CStorageKV> betsStorage;
     std::unique_ptr<CBettingDB> undos; // "undos"
     std::unique_ptr<CStorageKV> undosStorage;
+    std::unique_ptr<CBettingDB> payoutsInfo; // "payoutsinfo"
+    std::unique_ptr<CStorageKV> payoutsInfoStorage;
 
     // default constructor
     CBettingsView() { }
@@ -769,10 +812,16 @@ public:
         events = MakeUnique<CBettingDB>(*phr->events.get());
         bets = MakeUnique<CBettingDB>(*phr->bets.get());
         undos = MakeUnique<CBettingDB>(*phr->undos.get());
+        payoutsInfo = MakeUnique<CBettingDB>(*phr->payoutsInfo.get());
     }
 
     bool Flush() {
-        return mappings->Flush() && results->Flush() && events->Flush() && bets->Flush() && undos->Flush();
+        return mappings->Flush() &&
+                results->Flush() &&
+                events->Flush() &&
+                bets->Flush() &&
+                undos->Flush() &&
+                payoutsInfo->Flush();
     }
 
     void SetLastHeight(uint32_t height) {
@@ -838,13 +887,13 @@ extern CBettingsView *bettingsView;
 bool IsValidOracleTx(const CTxIn &txin);
 
 /** Aggregates the amount of WGR to be minted to pay out all bets as well as dev and OMNO rewards. **/
-int64_t GetBlockPayouts(std::vector<CBetOut>& vExpectedPayouts, CAmount& nMNBetReward);
+int64_t GetBlockPayouts(std::vector<CBetOut>& vExpectedPayouts, CAmount& nMNBetReward, std::vector<CPayoutInfo>& vPayoutsInfo);
 
 /** Aggregates the amount of WGR to be minted to pay out all CG Lotto winners as well as OMNO rewards. **/
 int64_t GetCGBlockPayouts(std::vector<CBetOut>& vexpectedCGPayouts, CAmount& nMNBetReward);
 
 /** Validating the payout block using the payout vector. **/
-bool IsBlockPayoutsValid(std::vector<CBetOut> vExpectedPayouts, CBlock block);
+bool IsBlockPayoutsValid(CBettingsView &bettingsViewCache, const std::vector<CBetOut>& vExpectedPayouts, CBlock block, int nBlockHeight, const std::vector<CPayoutInfo>& vExpectedPayoutsInfo);
 
 /** Find peerless events. **/
 std::vector<CPeerlessResult> getEventResults(int height);
@@ -853,14 +902,14 @@ std::vector<CPeerlessResult> getEventResults(int height);
 std::pair<std::vector<CChainGamesResult>,std::vector<std::string>> getCGLottoEventResults(int height);
 
 /** Get the peerless winning bets from the block chain and return the payout vector. **/
-std::vector<CBetOut> GetBetPayoutsLegacy(int height);
+void GetBetPayoutsLegacy(int height, std::vector<CBetOut>& vExpectedPayouts, std::vector<CPayoutInfo>& vPayoutsInfo);
 /** Using betting database for handle bets **/
-std::vector<CBetOut> GetBetPayouts(CBettingsView &bettingsViewCache, int height);
+void GetBetPayouts(CBettingsView &bettingsViewCache, int height, std::vector<CBetOut>& vExpectedPayouts, std::vector<CPayoutInfo>& vPayoutsInfo);
 /** Undo bets as marked completed when generating payouts **/
 bool UndoBetPayouts(CBettingsView &bettingsViewCache, int height);
 
 /** Get the chain games winner and return the payout vector. **/
-std::vector<CBetOut> GetCGLottoBetPayouts(int height);
+void GetCGLottoBetPayouts(int height, std::vector<CBetOut>& vExpectedPayouts, std::vector<CPayoutInfo>& vPayoutsInfo);
 
 /** Check Betting Tx when try accept tx to memory pool **/
 bool CheckBettingTx(CBettingsView& bettingsViewCache, const CTransaction& tx, const int height);
@@ -875,5 +924,7 @@ bool RecoveryBettingDB(boost::signals2::signal<void(const std::string&)> & progr
 
 bool UndoBettingTx(CBettingsView& bettingsViewCache, const CTransaction& tx, const uint32_t height, const int64_t blockTime);
 
+/* Revert payouts info from DB */
+bool UndoPayoutsInfo(CBettingsView &bettingsViewCache, int height);
 
 #endif // WAGERR_BET_H
