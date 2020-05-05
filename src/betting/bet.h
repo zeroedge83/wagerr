@@ -892,14 +892,7 @@ public:
         payoutsInfo = MakeUnique<CBettingDB>(*phr->payoutsInfo.get());
     }
 
-    bool Flush() {
-        return mappings->Flush() &&
-                results->Flush() &&
-                events->Flush() &&
-                bets->Flush() &&
-                undos->Flush() &&
-                payoutsInfo->Flush();
-    }
+    bool Flush();
 
     void SetLastHeight(uint32_t height) {
         if (!undos->Exists(std::string("LastHeight"))) {

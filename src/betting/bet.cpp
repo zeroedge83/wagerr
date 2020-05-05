@@ -1947,3 +1947,21 @@ bool UndoPayoutsInfo(CBettingsView &bettingsViewCache, int height)
 
     return true;
 }
+
+bool CBettingsView::Flush() {
+    int64_t nStart = GetTimeMillis();
+    LogPrintf("CBettingsView::Flush() timer start: %15dms\n", GetTimeMillis() - nStart);
+    bool returnVal = mappings->Flush();
+    LogPrintf("CBettingsView::Flush() timer after mappings->Flush(): %15dms\n", GetTimeMillis() - nStart);
+    returnVal &= results->Flush();
+    LogPrintf("CBettingsView::Flush() timer after results->Flush(): %15dms\n", GetTimeMillis() - nStart);
+    returnVal &= events->Flush();
+    LogPrintf("CBettingsView::Flush() timer after events->Flush(): %15dms\n", GetTimeMillis() - nStart);
+    returnVal &= bets->Flush();
+    LogPrintf("CBettingsView::Flush() timer after bets->Flush(): %15dms\n", GetTimeMillis() - nStart);
+    returnVal &= undos->Flush();
+    LogPrintf("CBettingsView::Flush() timer after undos->Flush(): %15dms\n", GetTimeMillis() - nStart);
+    returnVal &= payoutsInfo->Flush();
+    LogPrintf("CBettingsView::Flush() timer after payoutsInfo->Flush(): %15dms\n", GetTimeMillis() - nStart);
+    return returnVal;
+}

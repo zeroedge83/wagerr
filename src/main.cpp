@@ -3449,8 +3449,13 @@ bool static FlushStateToDisk(CValidationState& state, FlushStateMode mode)
             // overwrite one. Still, use a conservative safety factor of 2.
             if (!CheckDiskSpace(100 * 2 * 2 * pcoinsTip->GetCacheSize()))
                 return state.Error("out of disk space");
+
+            int64_t nStart = GetTimeMillis();
+            LogPrintf("FlushStateToDisk - timer start: %15dms\n", GetTimeMillis() - nStart);
+
             // First make sure all block and undo data is flushed to disk.
             FlushBlockFile();
+            LogPrintf("FlushStateToDisk - timer after FlushBlockFile(): %15dms\n", GetTimeMillis() - nStart);
             // Then update all block file information (which may refer to block and undo files).
             {
                 std::vector<std::pair<int, const CBlockFileInfo*> > vFiles;
@@ -3468,13 +3473,16 @@ bool static FlushStateToDisk(CValidationState& state, FlushStateMode mode)
                 if (!pblocktree->WriteBatchSync(vFiles, nLastBlockFile, vBlocks)) {
                     return state.Abort("Files to write to block index database");
                 }
+                LogPrintf("FlushStateToDisk - timer after pblocktree->WriteBatchSync(): %15dms\n", GetTimeMillis() - nStart);
             }
             // Finally flush the chainstate (which may refer to block index entries).
             if (!pcoinsTip->Flush())
                 return state.Abort("Failed to write to coin database");
+            LogPrintf("FlushStateToDisk - timer after pcoinsTip->Flush(): %15dms\n", GetTimeMillis() - nStart);
             // Flush global betting database to persistent storage (LevelDB)
             if (!bettingsView->Flush())
                 return state.Abort("Failed to write to betting database");
+            LogPrintf("FlushStateToDisk - timer after bettingsView->Flush(): %15dms\n", GetTimeMillis() - nStart);
             // Update best block in wallet (so we can detect restored wallets).
             if (mode != FLUSH_STATE_IF_NEEDED) {
                 GetMainSignals().SetBestChain(chainActive.GetLocator());
