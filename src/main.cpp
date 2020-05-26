@@ -3284,7 +3284,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         mExpectedAllPayouts = mExpectedPLPayouts;
         mExpectedAllPayouts.insert(mExpectedCGLottoPayouts.begin(), mExpectedCGLottoPayouts.end());
 
-        if (!IsBlockPayoutsValid(bettingsViewCache, mExpectedAllPayouts, block, pindex->nHeight, nExpectedMint)) {
+        CAmount nMasternodeReward = GetMasternodePayment(pindex->nHeight, nExpectedMint, 0, block.vtx.size() > 1 && block.vtx[1].HasZerocoinMintOutputs());
+        if (nMasternodeReward > 0) nMasternodeReward += nFees;
+
+        if (!IsBlockPayoutsValid(bettingsViewCache, mExpectedAllPayouts, block, pindex->nHeight, nExpectedMint, nMasternodeReward)) {
             if (Params().NetworkID() == CBaseChainParams::TESTNET && (pindex->nHeight >= Params().ZerocoinCheckTXexclude() && pindex->nHeight <= Params().ZerocoinCheckTX())) {
                 LogPrintf("ConnectBlock() - Skipping validation of bet payouts on testnet subset : Bet payout TX's don't match up with block payout TX's at block %i\n", pindex->nHeight);
             } else  {
