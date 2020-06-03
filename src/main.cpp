@@ -3232,6 +3232,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     //PoW phase redistributed fees to miner. PoS stage destroys fees.
     CAmount nExpectedMint = GetBlockValue(pindex->pprev->nHeight);
+    const CAmount nMNExpectedRewardValue = block.IsProofOfStake() ? GetMasternodePayment(pindex->nHeight, nExpectedMint, 1, block.vtx[1].HasZerocoinMintOutputs()) : 0;
+
     CAmount nMNBetReward = 0;
 
     if (block.IsProofOfWork())
@@ -3247,7 +3249,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     CAmount nExpectedBetMint = 0;
 
-    if( pindex->nHeight > Params().BetStartHeight() && block.vtx.size() > 1) {
+    if( pindex->nHeight > Params().BetStartHeight()) {
         std::string strBetNetBlockTxt;
         std::ostringstream BetNetBlockTxt;
         std::ostringstream BetNetExpectedTxt;
@@ -3284,10 +3286,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         mExpectedAllPayouts = mExpectedPLPayouts;
         mExpectedAllPayouts.insert(mExpectedCGLottoPayouts.begin(), mExpectedCGLottoPayouts.end());
 
-        CAmount nMasternodeReward = GetMasternodePayment(pindex->nHeight, nExpectedMint, 0, block.vtx[1].HasZerocoinMintOutputs());
-        if (nMasternodeReward > 0) nMasternodeReward += nFees;
-
-        if (!IsBlockPayoutsValid(bettingsViewCache, mExpectedAllPayouts, block.vtx[1], pindex->nHeight, nExpectedMint, nMasternodeReward)) {
+        if (!IsBlockPayoutsValid(bettingsViewCache, mExpectedAllPayouts, block, pindex->nHeight, nExpectedMint, nMNExpectedRewardValue)) {
             if (Params().NetworkID() == CBaseChainParams::TESTNET && (pindex->nHeight >= Params().ZerocoinCheckTXexclude() && pindex->nHeight <= Params().ZerocoinCheckTX())) {
                 LogPrintf("ConnectBlock() - Skipping validation of bet payouts on testnet subset : Bet payout TX's don't match up with block payout TX's at block %i\n", pindex->nHeight);
             } else  {
