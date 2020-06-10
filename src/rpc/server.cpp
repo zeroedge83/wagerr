@@ -404,6 +404,7 @@ static const CRPCCommand vRPCCommands[] =
         {"wallet", "getmybets", &getmybets, false, false, true},
         {"wagerr", "getpayoutinfo", &getpayoutinfo, false, false, false},
         {"wagerr", "getpayoutinfosince", &getpayoutinfosince, false, false, false},
+        {"wagerr", "getbetbytxid", &getbetbytxid, false, false, false},
 
 
 #ifdef ENABLE_WALLET
