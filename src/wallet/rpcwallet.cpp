@@ -697,7 +697,7 @@ std::string EventResultTypeToStr(ResultType resType)
     }
 }
 
-void CollectBetData(UniValue& uValue, const UniversalBetKey& key, const CUniversalBet& uniBet) {
+void CollectBetData(UniValue& uValue, const UniversalBetKey& betKey, const CUniversalBet& uniBet, bool requiredPayoutInfo = false) {
     UniValue uLegs(UniValue::VARR);
 
     for (uint32_t i = 0; i < uniBet.legs.size(); i++) {
@@ -752,7 +752,7 @@ void CollectBetData(UniValue& uValue, const UniversalBetKey& key, const CUnivers
                 uLeg.push_back(Pair("legResultType", "refund - invalid bet"));
             }
             else {
-                legOdds = GetBetOdds(leg, lockedEvent, plResult, key.blockHeight >= Params().WagerrProtocolV3StartHeight());
+                legOdds = GetBetOdds(leg, lockedEvent, plResult, betKey.blockHeight >= Params().WagerrProtocolV3StartHeight());
                 uLeg.push_back(Pair("legResultType", legOdds == 0 ? "lose" : legOdds == BET_ODDSDIVISOR ? "refund" : "win"));
             }
         }
@@ -765,9 +765,9 @@ void CollectBetData(UniValue& uValue, const UniversalBetKey& key, const CUnivers
         uLeg.push_back(Pair("lockedEvent", uLockedEvent));
         uLegs.push_back(uLeg);
     }
-    uValue.push_back(Pair("betBlockHeight", (uint64_t) key.blockHeight));
-    uValue.push_back(Pair("betTxHash", key.outPoint.hash.GetHex()));
-    uValue.push_back(Pair("betTxOut", (uint64_t) key.outPoint.n));
+    uValue.push_back(Pair("betBlockHeight", (uint64_t) betKey.blockHeight));
+    uValue.push_back(Pair("betTxHash", betKey.outPoint.hash.GetHex()));
+    uValue.push_back(Pair("betTxOut", (uint64_t) betKey.outPoint.n));
     uValue.push_back(Pair("legs", uLegs));
     uValue.push_back(Pair("address", uniBet.playerAddress.ToString()));
     uValue.push_back(Pair("amount", ValueFromAmount(uniBet.betAmount)));
@@ -775,6 +775,34 @@ void CollectBetData(UniValue& uValue, const UniversalBetKey& key, const CUnivers
     uValue.push_back(Pair("completed", uniBet.IsCompleted() ? "yes" : "no"));
     uValue.push_back(Pair("betResultType", BetResultTypeToStr(uniBet.resultType)));
     uValue.push_back(Pair("payout", uniBet.IsCompleted() ? ValueFromAmount(uniBet.payout) : "pending"));
+
+    if (requiredPayoutInfo) {
+        if (uniBet.IsCompleted()) {
+            if (uniBet.payoutHeight > 0) {
+                auto it = bettingsView->payoutsInfo->NewIterator();
+                for (it->Seek(CBettingDB::DbTypeToBytes(PayoutInfoKey{uniBet.payoutHeight, COutPoint{}})); it->Valid(); it->Next()) {
+                    PayoutInfoKey payoutKey;
+                    CPayoutInfo payoutInfo;
+                    CBettingDB::BytesToDbType(it->Key(), payoutKey);
+                    CBettingDB::BytesToDbType(it->Value(), payoutInfo);
+                    if (uniBet.payoutHeight != payoutKey.blockHeight) break;
+                    if (payoutInfo.betKey == betKey) {
+                        uValue.push_back(Pair("payoutTxHash", payoutKey.outPoint.hash.GetHex()));
+                        uValue.push_back(Pair("payoutTxOut", (uint64_t) payoutKey.outPoint.n));
+                        break;
+                    }
+                }
+            }
+            else {
+                uValue.push_back(Pair("payoutTxHash", "no"));
+                uValue.push_back(Pair("payoutTxOut", "no"));
+            }
+        }
+        else {
+            uValue.push_back(Pair("payoutTxHash", "pending"));
+            uValue.push_back(Pair("payoutTxOut", "pending"));
+        }
+    }
 }
 
 UniValue GetBets(uint32_t limit, CWallet *pwalletMain = NULL) {
@@ -794,7 +822,7 @@ UniValue GetBets(uint32_t limit, CWallet *pwalletMain = NULL) {
 
         UniValue uValue(UniValue::VOBJ);
 
-        CollectBetData(uValue, key, uniBet);
+        CollectBetData(uValue, key, uniBet, true);
 
         ret.push_back(uValue);
     }
@@ -858,7 +886,9 @@ UniValue getallbets(const UniValue& params, bool fHelp)
                 "    \"time\": \"betting time\",    (string) The betting time.\n"
                 "    \"completed\": betIsCompleted, (bool), The bet status in chain.\n"
                 "    \"betResultType\": type,       (lose/win/refund/pending), The info about bet result.\n"
-                "    \"payout\": x.xxx,            (numeric) The bet payout.\n"
+                "    \"payout\": x.xxx,             (numeric) The bet payout.\n"
+                "    \"payoutTxHash\": txHash,      (string) The hash of transaction wich store bet payout.\n"
+                "    \"payoutTxOut\": nOut,        (numeric) The out number of transaction wich store bet payout.\n"
                 "  },\n"
                 "  ...\n"
                 "]\n"
@@ -922,6 +952,8 @@ UniValue getmybets(const UniValue& params, bool fHelp)
                 "    \"completed\": betIsCompleted, (bool), The bet status in chain.\n"
                 "    \"betResultType\": type,       (lose/win/refund/pending), The info about bet result.\n"
                 "    \"payout\": x.xxx,            (numeric) The bet payout.\n"
+                "    \"payoutTxHash\": txHash,      (string) The hash of transaction wich store bet payout.\n"
+                "    \"payoutTxOut\": nOut,        (numeric) The out number of transaction wich store bet payout.\n"
                 "  },\n"
                 "  ...\n"
                 "]\n"
@@ -986,6 +1018,8 @@ UniValue getbetbytxid(const UniValue& params, bool fHelp)
                 "    \"completed\": betIsCompleted, (bool), The bet status in chain.\n"
                 "    \"betResultType\": type,       (lose/win/refund/pending), The info about bet result.\n"
                 "    \"payout\": x.xxx,            (numeric) The bet payout.\n"
+                "    \"payoutTxHash\": txHash,      (string) The hash of transaction wich store bet payout.\n"
+                "    \"payoutTxOut\": nOut,        (numeric) The out number of transaction wich store bet payout.\n"
                 "  },\n"
                 "  ...\n"
                 "]\n"
@@ -1021,7 +1055,7 @@ UniValue getbetbytxid(const UniValue& params, bool fHelp)
 
         UniValue uValue(UniValue::VOBJ);
 
-        CollectBetData(uValue, key, uniBet);
+        CollectBetData(uValue, key, uniBet, true);
 
         ret.push_back(uValue);
     }

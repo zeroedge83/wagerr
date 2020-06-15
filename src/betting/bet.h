@@ -548,6 +548,11 @@ typedef struct UniversalBetKey {
     explicit UniversalBetKey(uint32_t height, COutPoint out) : blockHeight(height), outPoint(out) { }
     explicit UniversalBetKey(const UniversalBetKey& betKey) : blockHeight{betKey.blockHeight}, outPoint{betKey.outPoint} { }
 
+    bool operator==(const UniversalBetKey& rhs) const
+    {
+        return blockHeight == rhs.blockHeight && outPoint == rhs.outPoint;
+    }
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -579,6 +584,7 @@ public:
     int64_t betTime;
     BetResultType resultType = BetResultType::betResultUnknown;
     CAmount payout = 0;
+    uint32_t payoutHeight = 0;
 
     explicit CUniversalBet() { }
     explicit CUniversalBet(const CAmount amount, const CBitcoinAddress address, const std::vector<CPeerlessBet> vLegs, const std::vector<CPeerlessEvent> vEvents, const COutPoint outPoint, const int64_t time) :
@@ -594,6 +600,7 @@ public:
         completed = bet.completed;
         resultType = bet.resultType;
         payout = bet.payout;
+        payoutHeight = bet.payoutHeight;
     }
 
     bool IsCompleted() const { return completed; }
@@ -630,6 +637,7 @@ public:
             READWRITE(resType);
         }
         READWRITE(payout);
+        READWRITE(payoutHeight);
     }
 
 private:
