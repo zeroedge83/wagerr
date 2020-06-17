@@ -1028,6 +1028,10 @@ bool ExtractPayouts(const CBlock& block, std::vector<CTxOut>& vFoundPayouts, uin
     return fStakesFound || (nWinnerPayments == 0 && totalStakeAcc + nMNReward < stakeAmount);
 }
 
+void LogFunction2(std::string message) {
+    LogPrintf("Logging: %s\n", message);
+}
+
 bool IsBlockPayoutsValid(CBettingsView &bettingsViewCache, const std::multimap<CPayoutInfo, CBetOut>& mExpectedPayoutsIn, const CBlock& block, const int nBlockHeight, const CAmount& nExpectedMint, const CAmount& nExpectedMNReward)
 {
     const CTransaction &tx = block.vtx[1];
@@ -1039,6 +1043,10 @@ bool IsBlockPayoutsValid(CBettingsView &bettingsViewCache, const std::multimap<C
 
     uint32_t nPayoutOffset = 0;
     uint32_t nWinnerPayments = 0; // unused
+
+    if (block.GetHash().ToString() == std::string("f7e74951fb302ba2dc7022840394cedfe289af9bebec68901371d1b4ac86952b")) {
+        LogFunction2("IsBlockPayoutsValid: Block 58094 - 'Not all payouts validate'");
+    }
 
     // If we have payouts to validate. Note: bets can only happen in blocks with MN payments.
     if (!ExtractPayouts(block, vFoundPayouts, nPayoutOffset, nWinnerPayments, nExpectedMint, nExpectedMNReward)) {

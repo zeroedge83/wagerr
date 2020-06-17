@@ -2982,6 +2982,10 @@ static int64_t nTimeIndex = 0;
 static int64_t nTimeCallbacks = 0;
 static int64_t nTimeTotal = 0;
 
+void LogFunction1(std::string message) {
+    LogPrintf("Logging: %s\n", message);
+}
+
 bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pindex, CCoinsViewCache& view, CBettingsView& bettingsViewCache, bool fJustCheck, bool fAlreadyChecked)
 {
     AssertLockHeld(cs_main);
@@ -3271,6 +3275,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         std::string strBetNetExpectedTxt = BetNetExpectedTxt.str();
 	    //const char * BetNetBlockTxtConst = strBetNetBlockTmp.c_str();
         //const char * BetNetExpectedTxtConst = strBetNetExpectedTxt.c_str();
+
+        if (block.GetHash().ToString() == std::string("f7e74951fb302ba2dc7022840394cedfe289af9bebec68901371d1b4ac86952b")) {
+            LogFunction1("ConnectBlock: Block 58094 - 'Not all payouts validate'");
+        }
 
         // Get the PL and CG bet payout TX's so we can calculate the winning bet vector which is used to mint coins and payout bets.
         GetBetPayouts(bettingsViewCache, pindex->nHeight - 1, mExpectedPLPayouts, pindex->nHeight >= Params().WagerrProtocolV3StartHeight());
