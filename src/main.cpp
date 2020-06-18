@@ -2614,6 +2614,10 @@ bool DisconnectBlock(CBlock& block, CValidationState& state, CBlockIndex* pindex
                 error("DisconnectBlock(): undo payout data is inconsistent");
                 return false;
             }
+            if (!UndoQuickGamesBetPayouts(bettingsViewCache, pindex->nHeight)) {
+                error("DisconnectBlock(): undo payout data for quick games bets is inconsistent");
+                return false;
+            }
             if (!UndoPayoutsInfo(bettingsViewCache, pindex->nHeight)) {
                 error("DisconnectBlock(): undo payouts info failed");
                 return false;
@@ -3243,9 +3247,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     std::multimap<CPayoutInfo, CBetOut> mExpectedAllPayouts;
     std::multimap<CPayoutInfo, CBetOut> mExpectedPLPayouts;
     std::multimap<CPayoutInfo, CBetOut> mExpectedCGLottoPayouts;
+    std::multimap<CPayoutInfo, CBetOut> mExpectedQGPayouts;
     mExpectedAllPayouts.clear();
     mExpectedPLPayouts.clear();
     mExpectedCGLottoPayouts.clear();
+    mExpectedQGPayouts.clear();
 
     CAmount nExpectedBetMint = 0;
 
@@ -3276,8 +3282,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         GetBetPayouts(bettingsViewCache, pindex->nHeight - 1, mExpectedPLPayouts, pindex->nHeight >= Params().WagerrProtocolV3StartHeight());
         GetCGLottoBetPayouts(pindex->nHeight - 1, mExpectedCGLottoPayouts);
 
+        nExpectedBetMint += GetQuickGamesBetPayouts(bettingsViewCache, pindex->nHeight - 1, mExpectedQGPayouts);
+
         // Get the total amount of WGR that needs to be minted to payout all winning bets.
-        nExpectedBetMint = GetBlockPayouts(mExpectedPLPayouts, nMNBetReward, pindex->nHeight);
+        nExpectedBetMint += GetBlockPayouts(mExpectedPLPayouts, nMNBetReward, pindex->nHeight);
         nExpectedBetMint += GetCGBlockPayoutsValue(mExpectedCGLottoPayouts);
 
         nExpectedBetMint += nMNBetReward;
@@ -3285,6 +3293,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         // Merge vectors into single payout vector.
         mExpectedAllPayouts = mExpectedPLPayouts;
         mExpectedAllPayouts.insert(mExpectedCGLottoPayouts.begin(), mExpectedCGLottoPayouts.end());
+        mExpectedAllPayouts.insert(mExpectedQGPayouts.begin(), mExpectedQGPayouts.end());
 
         if (!IsBlockPayoutsValid(bettingsViewCache, mExpectedAllPayouts, block, pindex->nHeight, nExpectedMint, nMNExpectedRewardValue)) {
             if (Params().NetworkID() == CBaseChainParams::TESTNET && (pindex->nHeight >= Params().ZerocoinCheckTXexclude() && pindex->nHeight <= Params().ZerocoinCheckTX())) {
@@ -3302,6 +3311,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     mExpectedAllPayouts.clear();
     mExpectedPLPayouts.clear();
     mExpectedCGLottoPayouts.clear();
+    mExpectedQGPayouts.clear();
 
     // Ensure that accumulator checkpoints are valid and in the same state as this instance of the chain
     AccumulatorMap mapAccumulators(Params().Zerocoin_Params(pindex->nHeight < Params().Zerocoin_Block_V2_Start()));
