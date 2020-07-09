@@ -13,7 +13,7 @@
 #include "addrman.h"
 #include "alert.h"
 #include "betting/bet.h"
-#include "betting/bet_v3.h"
+#include "betting/bet_db.h"
 #include "blocksignature.h"
 #include "chainparams.h"
 #include "checkpoints.h"
@@ -2607,23 +2607,11 @@ bool DisconnectBlock(CBlock& block, CValidationState& state, CBlockIndex* pindex
                 coins->vout[out.n] = undo.txout;
             }
         }
-        // Revert betting dats
-        if (pindex->nHeight > Params().BetStartHeight()) {
-            // revert complete bet payouts marker
-            if (!UndoBetPayouts(bettingsViewCache, pindex->nHeight)) {
-                error("DisconnectBlock(): undo payout data is inconsistent");
-                return false;
-            }
-            if (!UndoPayoutsInfo(bettingsViewCache, pindex->nHeight)) {
-                error("DisconnectBlock(): undo payouts info failed");
-                return false;
-            }
-            if (!UndoBettingTx(bettingsViewCache, tx, pindex->nHeight, pindex->GetBlockTime())) {
-                error("DisconnectBlock(): custom transaction and undo data inconsistent");
-                return false;
-            }
-        }
     }
+
+    /* Undo betting data */
+    if (!BettingUndo(bettingsViewCache, pindex->nHeight, block.vtx))
+        return false;
 
     // move best block pointer to prevout block
     view.SetBestBlock(pindex->pprev->GetBlockHash());
@@ -3239,16 +3227,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (block.IsProofOfWork())
         nExpectedMint += nFees;
 
-    // Calculate the expected bet payouts.
-    std::multimap<CPayoutInfo, CBetOut> mExpectedAllPayouts;
-    std::multimap<CPayoutInfo, CBetOut> mExpectedPLPayouts;
-    std::multimap<CPayoutInfo, CBetOut> mExpectedCGLottoPayouts;
-    mExpectedAllPayouts.clear();
-    mExpectedPLPayouts.clear();
-    mExpectedCGLottoPayouts.clear();
-
-    CAmount nExpectedBetMint = 0;
-
     if( pindex->nHeight > Params().BetStartHeight()) {
         std::string strBetNetBlockTxt;
         std::ostringstream BetNetBlockTxt;
@@ -3272,21 +3250,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 	    //const char * BetNetBlockTxtConst = strBetNetBlockTmp.c_str();
         //const char * BetNetExpectedTxtConst = strBetNetExpectedTxt.c_str();
 
-        // Get the PL and CG bet payout TX's so we can calculate the winning bet vector which is used to mint coins and payout bets.
-        GetBetPayouts(bettingsViewCache, pindex->nHeight - 1, mExpectedPLPayouts, pindex->nHeight >= Params().WagerrProtocolV3StartHeight());
-        GetCGLottoBetPayouts(pindex->nHeight - 1, mExpectedCGLottoPayouts);
+        std::multimap<CPayoutInfoDB, CBetOut> mExpectedPayouts;
 
-        // Get the total amount of WGR that needs to be minted to payout all winning bets.
-        nExpectedBetMint = GetBlockPayouts(mExpectedPLPayouts, nMNBetReward, pindex->nHeight);
-        nExpectedBetMint += GetCGBlockPayoutsValue(mExpectedCGLottoPayouts);
+        CAmount nExpectedBetMint = GetBettingPayouts(bettingsViewCache, pindex->nHeight, mExpectedPayouts);
 
-        nExpectedBetMint += nMNBetReward;
-
-        // Merge vectors into single payout vector.
-        mExpectedAllPayouts = mExpectedPLPayouts;
-        mExpectedAllPayouts.insert(mExpectedCGLottoPayouts.begin(), mExpectedCGLottoPayouts.end());
-
-        if (!IsBlockPayoutsValid(bettingsViewCache, mExpectedAllPayouts, block, pindex->nHeight, nExpectedMint, nMNExpectedRewardValue)) {
+        if (!IsBlockPayoutsValid(bettingsViewCache, mExpectedPayouts, block, pindex->nHeight, nExpectedMint, nMNExpectedRewardValue)) {
             if (Params().NetworkID() == CBaseChainParams::TESTNET && (pindex->nHeight >= Params().ZerocoinCheckTXexclude() && pindex->nHeight <= Params().ZerocoinCheckTX())) {
                 LogPrintf("ConnectBlock() - Skipping validation of bet payouts on testnet subset : Bet payout TX's don't match up with block payout TX's at block %i\n", pindex->nHeight);
             } else  {
@@ -3297,11 +3265,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
 
 //    assert(vExpectedAllPayouts.size() == vExpectedAllPayoutsInfo.size());
-
-    // Clear all the payout vectors.
-    mExpectedAllPayouts.clear();
-    mExpectedPLPayouts.clear();
-    mExpectedCGLottoPayouts.clear();
 
     // Ensure that accumulator checkpoints are valid and in the same state as this instance of the chain
     AccumulatorMap mapAccumulators(Params().Zerocoin_Params(pindex->nHeight < Params().Zerocoin_Block_V2_Start()));
@@ -3413,7 +3376,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (!fJustCheck) {
         if (pindex->nHeight > Params().BetStartHeight()) {
             for (const CTransaction& tx : block.vtx) {
-                ParseBettingTx(bettingsViewCache, tx, pindex->nHeight, block.GetBlockTime(), pindex->nHeight >= Params().WagerrProtocolV3StartHeight());
+                ProcessBettingTx(bettingsViewCache, tx, pindex->nHeight, block.GetBlockTime(), pindex->nHeight >= Params().WagerrProtocolV3StartHeight());
             }
             if (!(pindex->nHeight % 100)) {
                 int heightLimit = pindex->nHeight - Params().MaxReorganizationDepth();
@@ -3441,7 +3404,6 @@ bool static FlushStateToDisk(CValidationState& state, FlushStateMode mode)
 {
     LOCK(cs_main);
     static int64_t nLastWrite = 0;
-    LogPrintf("FlushStateToDisk: started");
     try {
         if ((mode == FLUSH_STATE_ALWAYS) ||
             ((mode == FLUSH_STATE_PERIODIC || mode == FLUSH_STATE_IF_NEEDED) && pcoinsTip->GetCacheSize() > nCoinCacheSize) ||

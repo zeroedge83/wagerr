@@ -9,6 +9,7 @@
 #include "test_wagerr.h"
 
 #include "betting/bet.h"
+#include "betting/bet_db.h"
 #include "main.h"
 #include "random.h"
 #include "txdb.h"
@@ -73,6 +74,10 @@ TestingSetup::TestingSetup()
 
         bettingsView->payoutsInfoStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-payoutsinfo"), CBettingDB::dbWrapperCacheSize(), true);
         bettingsView->payoutsInfo = MakeUnique<CBettingDB>(*bettingsView->payoutsInfoStorage.get());
+
+        bettingsView->quickGamesBetsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-quickgamesbets"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->quickGamesBets = MakeUnique<CBettingDB>(*bettingsView->quickGamesBetsStorage.get());
+
         InitBlockIndex();
 #ifdef ENABLE_WALLET
         bool fFirstRun;
