@@ -489,6 +489,7 @@ void ProcessBettingTx(CBettingsView& bettingsViewCache, const CTransaction& tx, 
 
                 if (!wagerrProtocolV3) {
                     plEvent.nEventCreationHeight = height;
+                    plEvent.fLegacyInitialHomeFavorite =  plEventTx->nHomeOdds < plEventTx->nAwayOdds ? true : false;
                 }
 
                 EventKey eventKey{plEvent.nEventId};
@@ -652,28 +653,28 @@ void ProcessBettingTx(CBettingsView& bettingsViewCache, const CTransaction& tx, 
     LogPrintf("ProcessBettingTx: end\n");
 }
 
-CAmount GetBettingPayouts(CBettingsView& bettingsViewCache, int height, std::multimap<CPayoutInfoDB, CBetOut>& mExpectedPayouts)
+CAmount GetBettingPayouts(CBettingsView& bettingsViewCache, const int nNewBlockHeight, std::multimap<CPayoutInfoDB, CBetOut>& mExpectedPayouts)
 {
-    if (height < Params().BetStartHeight()) return 0;
+    if (nNewBlockHeight < Params().BetStartHeight()) return 0;
 
     CAmount expectedMint = 0;
     std::vector<CBetOut> vExpectedPayouts;
     std::vector<CPayoutInfoDB> vPayoutsInfo;
 
     // Get the PL and CG bet payout TX's so we can calculate the winning bet vector which is used to mint coins and payout bets.
-    if (height >= Params().WagerrProtocolV3StartHeight()) {
+    if (nNewBlockHeight >= Params().WagerrProtocolV3StartHeight()) {
 
-        GetPLBetPayoutsV3(bettingsViewCache, height, vExpectedPayouts, vPayoutsInfo);
+        GetPLBetPayoutsV3(bettingsViewCache, nNewBlockHeight, vExpectedPayouts, vPayoutsInfo);
 
-        GetCGLottoBetPayoutsV2(height, vExpectedPayouts, vPayoutsInfo);
+        GetCGLottoBetPayoutsV2(nNewBlockHeight, vExpectedPayouts, vPayoutsInfo);
 
-        GetQuickGamesBetPayouts(bettingsViewCache, height, vExpectedPayouts, vPayoutsInfo);
+        GetQuickGamesBetPayouts(bettingsViewCache, nNewBlockHeight, vExpectedPayouts, vPayoutsInfo);
     }
     else {
 
-        GetPLBetPayoutsV3(bettingsViewCache, height, vExpectedPayouts, vPayoutsInfo);
+        GetPLBetPayoutsV3(bettingsViewCache, nNewBlockHeight, vExpectedPayouts, vPayoutsInfo);
 
-        GetCGLottoBetPayoutsV2(height, vExpectedPayouts, vPayoutsInfo);
+        GetCGLottoBetPayoutsV2(nNewBlockHeight, vExpectedPayouts, vPayoutsInfo);
     }
 
     assert(vExpectedPayouts.size() == vPayoutsInfo.size());
@@ -682,7 +683,7 @@ CAmount GetBettingPayouts(CBettingsView& bettingsViewCache, int height, std::mul
 
     for (int i = 0; i < vExpectedPayouts.size(); i++) {
         expectedMint += vExpectedPayouts[i].nValue;
-        mExpectedPayouts.insert(std::pair<CPayoutInfoDB, CBetOut>(vPayoutsInfo[i], vExpectedPayouts[i]));
+        mExpectedPayouts.insert(std::pair<const CPayoutInfoDB, CBetOut>(vPayoutsInfo[i], vExpectedPayouts[i]));
     }
 
     return expectedMint;
