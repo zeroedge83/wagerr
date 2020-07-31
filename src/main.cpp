@@ -3222,8 +3222,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CAmount nExpectedMint = GetBlockValue(pindex->pprev->nHeight);
     const CAmount nMNExpectedRewardValue = block.IsProofOfStake() ? GetMasternodePayment(pindex->nHeight, nExpectedMint, 1, block.vtx[1].HasZerocoinMintOutputs()) : 0;
 
-    CAmount nMNBetReward = 0;
-
     if (block.IsProofOfWork())
         nExpectedMint += nFees;
 
@@ -3377,6 +3375,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (pindex->nHeight > Params().BetStartHeight()) {
             for (const CTransaction& tx : block.vtx) {
                 ProcessBettingTx(bettingsViewCache, tx, pindex->nHeight, block.GetBlockTime(), pindex->nHeight >= Params().WagerrProtocolV3StartHeight());
+            }
+            for (const CTransaction& tx : block.vtx) {
+                ProcessOracleTx(bettingsViewCache, tx, pindex->nHeight, block.GetBlockTime(), pindex->nHeight >= Params().WagerrProtocolV3StartHeight());
             }
             if (!(pindex->nHeight % Params().MaxReorganizationDepth())) {
                 int heightLimit = pindex->nHeight - Params().MaxReorganizationDepth();
