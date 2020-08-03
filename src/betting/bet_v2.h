@@ -11,6 +11,26 @@
 class CBetOut;
 class CPayoutInfoDB;
 
+class LegacyPayout
+{
+public:
+    uint16_t payoutType;
+    uint32_t blockHeight;
+    int vtxNr;
+    CTxOut txOut;
+
+    LegacyPayout(uint16_t payoutTypeIn, uint32_t blockHeightIn, int vtxNrIn, CTxOut txOutIn) :
+        payoutType(payoutTypeIn), blockHeight(blockHeightIn), vtxNr(vtxNrIn), txOut(txOutIn) {};
+
+    bool operator<(const LegacyPayout& rhs) {
+        if (payoutType != rhs.payoutType) return payoutType < rhs.payoutType;
+
+        if (blockHeight != rhs.blockHeight) return blockHeight < rhs.blockHeight;
+
+        return vtxNr < rhs.vtxNr;
+    }
+};
+
 /** Get the peerless winning bets from the block chain and return the payout vector. **/
 void GetBetPayoutsV2(const int nNewBlockHeight, std::vector<CBetOut>& vExpectedPayouts, std::vector<CPayoutInfoDB>& vPayoutsInfo);
 /** Get the chain games winner and return the payout vector. **/
