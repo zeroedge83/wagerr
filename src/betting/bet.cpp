@@ -1178,7 +1178,8 @@ bool BettingUndo(CBettingsView& bettingsViewCache, int height, const std::vector
             return false;
         }
 
-        for (auto tx : vtx) {
+        for (int i = vtx.size() - 1; i >= 0 ; i--) {
+            const CTransaction &tx = vtx[i];
             if (!UndoOracleTx(bettingsViewCache, tx, height)) {
                 error("DisconnectBlock(): custom transaction and undo data inconsistent");
                 return false;
