@@ -93,6 +93,42 @@ bool IsBlockPayoutsValid(CBettingsView &bettingsViewCache, const std::multimap<C
     }
     setFoundPayouts = std::multiset<CTxOut>(vFoundPayouts.begin(), vFoundPayouts.end());
 
+    if (nBlockHeight < Params().WagerrProtocolV3StartHeight()) {
+        std::vector<LegacyPayout> vExpectedLegacyPayouts;
+        for (auto payout : mExpectedPayouts) {
+
+            int nHeight = payout.first.betKey.blockHeight;
+
+            CBlock block;
+            int vtxNr = 0;
+            if (payout.first.payoutType != PayoutType::bettingReward && ReadBlockFromDisk(block, chainActive[nHeight])) {
+                for (size_t i = 0; i < block.vtx.size(); i++) {
+                    const CTransaction& tx = block.vtx[i];
+                    if (tx.GetHash() == payout.first.betKey.outPoint.hash) {
+                        vtxNr = i;
+                        break;
+                    }
+                }
+            } else {
+                LogPrintf("%s: failed locate bet\n", __func__);
+            }
+            vExpectedLegacyPayouts.emplace_back((uint16_t)payout.first.payoutType, payout.first.betKey.blockHeight, vtxNr, payout.second);
+        }
+        std::sort(vExpectedLegacyPayouts.begin(), vExpectedLegacyPayouts.end());
+        for (size_t i = 0; i < vExpectedLegacyPayouts.size(); i++) {
+            const LegacyPayout& payout = vExpectedLegacyPayouts[i];
+            if (i < vFoundPayouts.size()) {
+                if (payout.txOut < vFoundPayouts[i] || vFoundPayouts[i] < payout.txOut) {
+                    LogPrintf("%s: checking legacy payouts failed - payouts not equal (%d : %d - %s %s)\n", __func__, 
+                            payout.blockHeight, payout.vtxNr, payout.txOut.ToString(), vFoundPayouts[i].ToString());
+                }
+            } else {
+                LogPrintf("%s: checking legacy payouts failed - index too large (%d : %d)\n", __func__, payout.blockHeight, payout.vtxNr);
+            }
+        }
+
+    }
+
     for (auto expectedPayout : mExpectedPayouts)
     {
         setExpectedPayouts.insert(expectedPayout.second);
