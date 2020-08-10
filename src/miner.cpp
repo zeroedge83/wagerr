@@ -509,22 +509,25 @@ CBlockTemplate* CreateNewBlock(const CScript& scriptPubKeyIn, CWallet* pwallet, 
 
                     CBlock block;
                     int vtxNr = -1;
-                    if (payout.first.payoutType != PayoutType::bettingReward && ReadBlockFromDisk(block, chainActive[nHeight])) {
-                        for (size_t i = 0; i < block.vtx.size(); i++) {
-                            const CTransaction& tx = block.vtx[i];
-                            if (tx.GetHash() == payout.first.betKey.outPoint.hash) {
-                                vtxNr = i;
-                                break;
+                    if (payout.first.payoutType != PayoutType::bettingReward) {
+                        if (ReadBlockFromDisk(block, chainActive[nHeight])) {
+                            for (size_t i = 0; i < block.vtx.size(); i++) {
+                                const CTransaction& tx = block.vtx[i];
+                                if (tx.GetHash() == payout.first.betKey.outPoint.hash) {
+                                    vtxNr = i;
+                                    break;
+                                }
                             }
+                        } else {
+                            LogPrintf("%s: failed to locate bet\n", __func__);
                         }
-                    } else {
-                        LogPrintf("%s: failed locate bet\n", __func__);
                     }
                     vExpectedLegacyPayouts.emplace_back((uint16_t)payout.first.payoutType, payout.first.betKey.blockHeight, vtxNr, payout.second);
                 }
                 std::sort(vExpectedLegacyPayouts.begin(), vExpectedLegacyPayouts.end());
                 for (auto payout : vExpectedLegacyPayouts) {
                     vExpectedTxOuts.emplace_back(payout.txOut.nValue, payout.txOut.scriptPubKey);
+                    LogPrintf("%s - CoinStake with legacy payout - blockHeight[%d] scriptPubKey[%s] nValue[%d]\n", __func__, nHeight, payout.txOut.scriptPubKey.ToString(), payout.txOut.nValue);
                 }
             }
 
