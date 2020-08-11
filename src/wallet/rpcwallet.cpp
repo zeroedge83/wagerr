@@ -695,8 +695,11 @@ std::string EventResultTypeToStr(ResultType resType)
     }
 }
 
-void CollectBetData(UniValue& uValue, const PeerlessBetKey& betKey, const CPeerlessBetDB& uniBet, bool requiredPayoutInfo = false) {
+void CollectPLBetData(UniValue& uValue, const PeerlessBetKey& betKey, const CPeerlessBetDB& uniBet, bool requiredPayoutInfo = false) {
+
     UniValue uLegs(UniValue::VARR);
+
+    uValue.push_back(Pair("type", "peerless"));
 
     for (uint32_t i = 0; i < uniBet.legs.size(); i++) {
         auto &leg = uniBet.legs[i];
@@ -836,7 +839,7 @@ UniValue GetBets(uint32_t limit, CWallet *pwalletMain = NULL) {
 
         UniValue uValue(UniValue::VOBJ);
 
-        CollectBetData(uValue, key, uniBet, true);
+        CollectPLBetData(uValue, key, uniBet, true);
 
         ret.push_back(uValue);
     }
@@ -984,97 +987,55 @@ UniValue getmybets(const UniValue& params, bool fHelp)
     return GetBets(limit, pwalletMain);
 }
 
-UniValue getbetbytxid(const UniValue& params, bool fHelp)
-{
-    if (fHelp || params.size() > 1)
-        throw std::runtime_error(
-                "getbetbytxid\n"
-                "\nGet bet info by bet's txid.\n"
+void CollectQGBetData(UniValue &uValue, QuickGamesBetKey &key, CQuickGamesBetDB &qgBet, uint256 hash, bool requiredPayoutInfo = false) {
 
-                "\nArguments:\n"
-                "1. \"txid\" (string, required) Transaction ID wich has bet opcode in blockchain.\n"
-                "\nResult: (array of objects)\n"
-                "[\n"
-                "  {\n"
-                "    \"betBlockHeight\": height, (string) The hash of block wich store tx with bet opcode.\n"
-                "    \"betTxHash\": txHash, (string) The hash of transaction wich store bet opcode.\n"
-                "    \"betTxOut\": nOut, (numeric) The out number of transaction wich store bet opcode.\n"
-                "    \"legs\": (array of objects)\n"
-                "      [\n"
-                "        {\n"
-                "          \"event-id\": id, (numeric) The event id.\n"
-                "          \"outcome\": typeId, (numeric) The outcome type id.\n"
-                "          \"legResultType\": typeStr, (string) The string with leg result info.\n"
-                "          \"lockedEvent\": (object) {\n"
-                "            \"homeOdds\": homeOdds, (numeric) The moneyline odds to home team winning.\n"
-                "            \"awayOdds\": awayOdds, (numeric) The moneyline odds to away team winning.\n"
-                "            \"drawOdds\": drawOdds, (numeric) The moneyline odds to draw.\n"
-                "            \"spreadPoints\": spreadPoints, (numeric) The spread points.\n"
-                "            \"spreadHomeOdds\": spreadHomeOdds, (numeric) The spread odds to home team.\n"
-                "            \"spreadAwayOdds\": spreadAwayOdds, (numeric) The spread odds to away team.\n"
-                "            \"totalPoints\": totalPoints, (numeric) The total points.\n"
-                "            \"totalOverOdds\": totalOverOdds, (numeric) The total odds to over.\n"
-                "            \"totalUnderOdds\": totalUnderOdds, (numeric) The total odds to under.\n"
-                "            \"starting\": starting, (numeric) The event start time in ms of Unix Timestamp.\n"
-                "            \"home\": home command, (string) The home team name.\n"
-                "            \"away\": away command, (string) The away team name.\n"
-                "            \"tournament\": tournament, (string) The tournament name.\n"
-                "            \"eventResultType\": type, (standard, event refund, ml refund, spreads refund, totals refund) The result type of finished event.\n"
-                "            \"homeScore\": score, (numeric) The scores number of home team.\n"
-                "            \"awayScore\": score, (numeric) The scores number of away team.\n"
-                "          }\n"
-                "        },\n"
-                "        ...\n"
-                "      ],                           (list) The list of legs.\n"
-                "    \"address\": playerAddress,    (string) The player address.\n"
-                "    \"amount\": x.xxx,             (numeric) The amount bet in WGR.\n"
-                "    \"time\": \"betting time\",    (string) The betting time.\n"
-                "    \"completed\": betIsCompleted, (bool), The bet status in chain.\n"
-                "    \"betResultType\": type,       (lose/win/refund/pending), The info about bet result.\n"
-                "    \"payout\": x.xxx,            (numeric) The bet payout.\n"
-                "    \"payoutTxHash\": txHash,      (string) The hash of transaction wich store bet payout.\n"
-                "    \"payoutTxOut\": nOut,        (numeric) The out number of transaction wich store bet payout.\n"
-                "  },\n"
-                "  ...\n"
-                "]\n"
+    uValue.push_back(Pair("type", "quickgame"));
 
-                "\nExamples:\n" +
-                HelpExampleCli("getbetbytxid", "1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d"));
+    auto &gameView = Params().QuickGamesArr()[qgBet.gameType];
 
-    uint256 txHash;
-    txHash.SetHex(params[0].get_str());
-
-    CTransaction tx;
-    uint256 hashBlock;
-    if (!GetTransaction(txHash, tx, hashBlock, true)) {
-        throw std::runtime_error("Invalid bet's transaction id");
+    uValue.push_back(Pair("blockHeight", (uint64_t) key.blockHeight));
+    uValue.push_back(Pair("resultBlockHash", hash.ToString().c_str()));
+    uValue.push_back(Pair("betTxHash", key.outPoint.hash.GetHex()));
+    uValue.push_back(Pair("betTxOut", (uint64_t) key.outPoint.n));
+    uValue.push_back(Pair("address", qgBet.playerAddress.ToString()));
+    uValue.push_back(Pair("amount", ValueFromAmount(qgBet.betAmount)));
+    uValue.push_back(Pair("time", (uint64_t) qgBet.betTime));
+    uValue.push_back(Pair("gameName", gameView.name));
+    UniValue betInfo{UniValue::VOBJ};
+    for (auto val : gameView.betInfoParser(qgBet.vBetInfo, hash)) {
+        betInfo.push_back(Pair(val.first, val.second));
     }
+    uValue.push_back(Pair("betInfo", betInfo));
+    uValue.push_back(Pair("completed", qgBet.IsCompleted() ? "yes" : "no"));
+    uValue.push_back(Pair("betResultType", BetResultTypeToStr(qgBet.resultType)));
+    uValue.push_back(Pair("payout", qgBet.IsCompleted() ? ValueFromAmount(qgBet.payout) : "pending"));
 
-    CBlockIndex* blockindex = mapBlockIndex[hashBlock];
+    if (requiredPayoutInfo) {
+        if (qgBet.IsCompleted()) {
+            auto it = bettingsView->payoutsInfo->NewIterator();
+            // payoutHeight is next block height after block which contain bet
+            uint32_t payoutHeight = key.blockHeight + 1;
+            for (it->Seek(CBettingDB::DbTypeToBytes(PayoutInfoKey{payoutHeight, COutPoint{}})); it->Valid(); it->Next()) {
+                PayoutInfoKey payoutKey;
+                CPayoutInfoDB payoutInfo;
+                CBettingDB::BytesToDbType(it->Key(), payoutKey);
+                CBettingDB::BytesToDbType(it->Value(), payoutInfo);
 
-    if (!blockindex) {
-        throw std::runtime_error("Invalid block index");
+                if (payoutHeight != payoutKey.blockHeight)
+                    break;
+
+                if (payoutInfo.betKey == key) {
+                    uValue.push_back(Pair("payoutTxHash", payoutKey.outPoint.hash.GetHex()));
+                    uValue.push_back(Pair("payoutTxOut", (uint64_t) payoutKey.outPoint.n));
+                    break;
+                }
+            }
+        }
+        else {
+            uValue.push_back(Pair("payoutTxHash", "pending"));
+            uValue.push_back(Pair("payoutTxOut", "pending"));
+        }
     }
-
-    UniValue ret{UniValue::VARR};
-
-    auto it = bettingsView->bets->NewIterator();
-    for (it->Seek(CBettingDB::DbTypeToBytes(PeerlessBetKey{static_cast<uint32_t>(blockindex->nHeight), COutPoint{txHash, 0}})); it->Valid(); it->Next()) {
-        PeerlessBetKey key;
-        CPeerlessBetDB uniBet;
-        CBettingDB::BytesToDbType(it->Value(), uniBet);
-        CBettingDB::BytesToDbType(it->Key(), key);
-
-        if (key.outPoint.hash != txHash) break;
-
-        UniValue uValue(UniValue::VOBJ);
-
-        CollectBetData(uValue, key, uniBet, true);
-
-        ret.push_back(uValue);
-    }
-
-    return ret;
 }
 
 UniValue GetQuickGamesBets(uint32_t limit, CWallet *pwalletMain = NULL) {
@@ -1095,27 +1056,12 @@ UniValue GetQuickGamesBets(uint32_t limit, CWallet *pwalletMain = NULL) {
         CBlockIndex *blockIndex = chainActive[(int) key.blockHeight];
         if (blockIndex)
             hash = blockIndex->hashProofOfStake;
+        else
+            hash = 0;
 
         UniValue bet{UniValue::VOBJ};
 
-        auto &gameView = Params().QuickGamesArr()[qgBet.gameType];
-
-        bet.push_back(Pair("blockHeight", (uint64_t) key.blockHeight));
-        bet.push_back(Pair("resultBlockHash", hash.ToString().c_str()));
-        bet.push_back(Pair("betTxHash", key.outPoint.hash.GetHex()));
-        bet.push_back(Pair("betTxOut", (uint64_t) key.outPoint.n));
-        bet.push_back(Pair("address", qgBet.playerAddress.ToString()));
-        bet.push_back(Pair("amount", ValueFromAmount(qgBet.betAmount)));
-        bet.push_back(Pair("time", (uint64_t) qgBet.betTime));
-        bet.push_back(Pair("gameName", gameView.name));
-        UniValue betInfo{UniValue::VOBJ};
-        for (auto val : gameView.betInfoParser(qgBet.vBetInfo, hash)) {
-            betInfo.push_back(Pair(val.first, val.second));
-        }
-        bet.push_back(Pair("betInfo", betInfo));
-        bet.push_back(Pair("completed", qgBet.IsCompleted() ? "yes" : "no"));
-        bet.push_back(Pair("betResultType", BetResultTypeToStr(qgBet.resultType)));
-        bet.push_back(Pair("payout", qgBet.IsCompleted() ? ValueFromAmount(qgBet.payout) : "pending"));
+        CollectQGBetData(bet, key, qgBet, hash, true);
 
         ret.push_back(bet);
     }
@@ -1209,6 +1155,125 @@ UniValue getmyqgbets(const UniValue& params, bool fHelp)
     EnsureWalletIsUnlocked();
 
     return GetQuickGamesBets(limit, pwalletMain);
+}
+
+UniValue getbetbytxid(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+        throw std::runtime_error(
+                "getbetbytxid\n"
+                "\nGet bet info by bet's txid.\n"
+
+                "\nArguments:\n"
+                "1. \"txid\" (string, required) Transaction ID wich has bet opcode in blockchain.\n"
+                "\nResult: (array of objects)\n"
+                "[\n"
+                "  {\n"
+                "    \"betBlockHeight\": height, (string) The hash of block wich store tx with bet opcode.\n"
+                "    \"betTxHash\": txHash, (string) The hash of transaction wich store bet opcode.\n"
+                "    \"betTxOut\": nOut, (numeric) The out number of transaction wich store bet opcode.\n"
+                "    \"legs\": (array of objects)\n"
+                "      [\n"
+                "        {\n"
+                "          \"event-id\": id, (numeric) The event id.\n"
+                "          \"outcome\": typeId, (numeric) The outcome type id.\n"
+                "          \"legResultType\": typeStr, (string) The string with leg result info.\n"
+                "          \"lockedEvent\": (object) {\n"
+                "            \"homeOdds\": homeOdds, (numeric) The moneyline odds to home team winning.\n"
+                "            \"awayOdds\": awayOdds, (numeric) The moneyline odds to away team winning.\n"
+                "            \"drawOdds\": drawOdds, (numeric) The moneyline odds to draw.\n"
+                "            \"spreadPoints\": spreadPoints, (numeric) The spread points.\n"
+                "            \"spreadHomeOdds\": spreadHomeOdds, (numeric) The spread odds to home team.\n"
+                "            \"spreadAwayOdds\": spreadAwayOdds, (numeric) The spread odds to away team.\n"
+                "            \"totalPoints\": totalPoints, (numeric) The total points.\n"
+                "            \"totalOverOdds\": totalOverOdds, (numeric) The total odds to over.\n"
+                "            \"totalUnderOdds\": totalUnderOdds, (numeric) The total odds to under.\n"
+                "            \"starting\": starting, (numeric) The event start time in ms of Unix Timestamp.\n"
+                "            \"home\": home command, (string) The home team name.\n"
+                "            \"away\": away command, (string) The away team name.\n"
+                "            \"tournament\": tournament, (string) The tournament name.\n"
+                "            \"eventResultType\": type, (standard, event refund, ml refund, spreads refund, totals refund) The result type of finished event.\n"
+                "            \"homeScore\": score, (numeric) The scores number of home team.\n"
+                "            \"awayScore\": score, (numeric) The scores number of away team.\n"
+                "          }\n"
+                "        },\n"
+                "        ...\n"
+                "      ],                           (list) The list of legs.\n"
+                "    \"address\": playerAddress,    (string) The player address.\n"
+                "    \"amount\": x.xxx,             (numeric) The amount bet in WGR.\n"
+                "    \"time\": \"betting time\",    (string) The betting time.\n"
+                "    \"completed\": betIsCompleted, (bool), The bet status in chain.\n"
+                "    \"betResultType\": type,       (lose/win/refund/pending), The info about bet result.\n"
+                "    \"payout\": x.xxx,            (numeric) The bet payout.\n"
+                "    \"payoutTxHash\": txHash,      (string) The hash of transaction wich store bet payout.\n"
+                "    \"payoutTxOut\": nOut,        (numeric) The out number of transaction wich store bet payout.\n"
+                "  },\n"
+                "  ...\n"
+                "]\n"
+
+                "\nExamples:\n" +
+                HelpExampleCli("getbetbytxid", "1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d"));
+
+    uint256 txHash;
+    txHash.SetHex(params[0].get_str());
+
+    CTransaction tx;
+    uint256 hashBlock;
+    if (!GetTransaction(txHash, tx, hashBlock, true)) {
+        throw std::runtime_error("Invalid bet's transaction id");
+    }
+
+    CBlockIndex* blockindex = mapBlockIndex[hashBlock];
+
+    if (!blockindex) {
+        throw std::runtime_error("Invalid block index");
+    }
+
+    UniValue ret{UniValue::VARR};
+
+    {
+        auto it = bettingsView->bets->NewIterator();
+        for (it->Seek(CBettingDB::DbTypeToBytes(PeerlessBetKey{static_cast<uint32_t>(blockindex->nHeight), COutPoint{txHash, 0}})); it->Valid(); it->Next()) {
+            PeerlessBetKey key;
+            CPeerlessBetDB uniBet;
+            CBettingDB::BytesToDbType(it->Value(), uniBet);
+            CBettingDB::BytesToDbType(it->Key(), key);
+
+            if (key.outPoint.hash != txHash) break;
+
+            UniValue uValue(UniValue::VOBJ);
+
+            CollectPLBetData(uValue, key, uniBet, true);
+
+            ret.push_back(uValue);
+        }
+    }
+    {
+        auto it = bettingsView->quickGamesBets->NewIterator();
+        for (it->Seek(CBettingDB::DbTypeToBytes(PeerlessBetKey{static_cast<uint32_t>(blockindex->nHeight), COutPoint{txHash, 0}})); it->Valid(); it->Next()) {
+            QuickGamesBetKey key;
+            CQuickGamesBetDB qgBet;
+            uint256 hash;
+            CBettingDB::BytesToDbType(it->Key(), key);
+            CBettingDB::BytesToDbType(it->Value(), qgBet);
+
+            if (key.outPoint.hash != txHash) break;
+
+            CBlockIndex *blockIndex = chainActive[(int) key.blockHeight];
+            if (blockIndex)
+                hash = blockIndex->hashProofOfStake;
+            else
+                hash = 0;
+
+            UniValue uValue(UniValue::VOBJ);
+
+            CollectQGBetData(uValue, key, qgBet, hash);
+
+            ret.push_back(uValue);
+        }
+    }
+
+    return ret;
 }
 
 UniValue listchaingamesbets(const UniValue& params, bool fHelp)
