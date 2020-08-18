@@ -56,7 +56,7 @@ std::map<std::string, std::string> DiceBetInfoParser(std::vector<unsigned char>&
     uint64_t sum = firstDice + secondDice;
 
     return {std::make_pair("diceGameType", DiceGameTypeToStr(info.betType)),
-        std::make_pair("betNumber", std::to_string(info.betNumber)),
+        std::make_pair("betNumber", (info.betType != qgDiceEven && info.betType != qgDiceOdd) ? std::to_string(info.betNumber) : std::string("")),
         std::make_pair("firstDice", std::to_string(firstDice)),
         std::make_pair("secondDice", std::to_string(secondDice)),
         std::make_pair("sum", std::to_string(sum))};
