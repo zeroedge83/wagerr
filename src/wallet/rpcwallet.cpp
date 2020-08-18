@@ -30,6 +30,7 @@
 
 #include <cstdlib>
 #include <stdint.h>
+#include <math.h>
 
 #include "libzerocoin/Coin.h"
 #include "spork.h"
@@ -1967,9 +1968,23 @@ UniValue placeqgdicebet(const UniValue& params, bool fHelp)
 
     uint32_t betNumber = 0;
     if (betType != quickgames::qgDiceEven && betType != quickgames::qgDiceOdd) {
-        betNumber = params[2].get_int();
-        if (betNumber < 2 || betNumber > 12)
-            throw JSONRPCError(RPC_BET_DETAILS_ERROR, "Error: Incorrect bet number for dice game! It must be between 2 and 12.");
+        double realBetNumber = params[2].get_real();
+        double intpart;
+        double fractpart = modf (realBetNumber , &intpart);
+        betNumber = uint32_t(intpart);
+        if (betType == quickgames::qgDiceEqual || betType == quickgames::qgDiceNotEqual) {
+            if (fabs(fractpart) > 1.0e-10) {
+                throw JSONRPCError(RPC_BET_DETAILS_ERROR, "Error: Incorrect bet number for dice game! For \"equal\" or \"not equal\" bet types available only integer value");
+            }
+            if (betNumber < 2 || betNumber > 12)
+                throw JSONRPCError(RPC_BET_DETAILS_ERROR, "Error: Incorrect bet number for dice game! It must be between 2 and 12");
+        } else { // qgDiceTotalOver or qgDiceTotalUnder
+            if (fabs(fractpart - 0.5) > 1.0e-10) {
+                throw JSONRPCError(RPC_BET_DETAILS_ERROR, "Error: Incorrect bet number for dice game! For \"total over\" or \"total under\" bet types available only .5 value");
+            }
+            if (betNumber < 2 || betNumber > 11)
+                throw JSONRPCError(RPC_BET_DETAILS_ERROR, "Error: Incorrect bet number for dice game! It must be between 2.5 and 11.5");
+        }
     }
     betInfo.betType = betType;
     betInfo.betNumber = betNumber;

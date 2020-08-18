@@ -55,8 +55,11 @@ std::map<std::string, std::string> DiceBetInfoParser(std::vector<unsigned char>&
     uint64_t secondDice = seed.Get64(1) % 6 + 1;
     uint64_t sum = firstDice + secondDice;
 
+    std::string strBetNumber = std::to_string(info.betNumber);
+    if (info.betType == qgDiceTotalOver && info.betType == qgDiceTotalUnder)
+        strBetNumber.append(".5");
     return {std::make_pair("diceGameType", DiceGameTypeToStr(info.betType)),
-        std::make_pair("betNumber", (info.betType != qgDiceEven && info.betType != qgDiceOdd) ? std::to_string(info.betNumber) : std::string("")),
+        std::make_pair("betNumber", (info.betType != qgDiceEven && info.betType != qgDiceOdd) ? strBetNumber : std::string("")),
         std::make_pair("firstDice", std::to_string(firstDice)),
         std::make_pair("secondDice", std::to_string(secondDice)),
         std::make_pair("sum", std::to_string(sum))};
