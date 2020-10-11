@@ -104,8 +104,7 @@ UniValue getmappingname(const UniValue& params, bool fHelp)
                 "]\n"
 
                 "\nExamples:\n" +
-                HelpExampleCli("getmappingname", "") + HelpExampleRpc("getmappingname", ""));
-
+                HelpExampleCli("getmappingname", "\"sport\" 0") + HelpExampleRpc("getmappingname", "\"sport\" 0"));
     const std::string mIndex{params[0].get_str()};
     const uint32_t id{static_cast<uint32_t>(params[1].get_int())};
     const MappingType type{CMappingDB::FromTypeName(mIndex)};
