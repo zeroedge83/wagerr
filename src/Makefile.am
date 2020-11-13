@@ -83,6 +83,13 @@ BITCOIN_CORE_H = \
   amount.h \
   base58.h \
   betting/bet.h \
+  betting/bet_common.h \
+  betting/bet_tx.h \
+  betting/bet_db.h \
+  betting/bet_v2.h \
+  betting/bet_v3.h \
+  betting/quickgames/dice.h \
+  betting/quickgames/qgview.h \
   bip38.h \
   bloom.h \
   blocksignature.h \
@@ -100,6 +107,7 @@ BITCOIN_CORE_H = \
   compat/endian.h \
   compat/sanity.h \
   compressor.h \
+  consensus/merkle.h \
   primitives/block.h \
   primitives/transaction.h \
   core_io.h \
@@ -120,6 +128,7 @@ BITCOIN_CORE_H = \
   key.h \
   keystore.h \
   leveldbwrapper.h \
+  flushablestorage/flushablestorage.h \
   limitedmap.h \
   main.h \
   masternode.h \
@@ -129,6 +138,7 @@ BITCOIN_CORE_H = \
   masternodeman.h \
   masternodeconfig.h \
   merkleblock.h \
+  messagesigner.h \
   miner.h \
   mruset.h \
   netbase.h \
@@ -153,6 +163,7 @@ BITCOIN_CORE_H = \
   serialize.h \
   spork.h \
   sporkdb.h \
+  sporkid.h \
   stakeinput.h \
   streams.h \
   support/cleanse.h \
@@ -188,9 +199,6 @@ BITCOIN_CORE_H = \
   zwgr/zwgrtracker.h \
   zwgr/zwgrwallet.h \
   zwgr/zwgrmodule.h \
-  genwit.h \
-  concurrentqueue.h \
-  lightzwgrthread.h \
   zmq/zmqabstractnotifier.h \
   zmq/zmqconfig.h \
   zmq/zmqnotificationinterface.h \
@@ -208,7 +216,12 @@ libbitcoin_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libbitcoin_server_a_SOURCES = \
   addrman.cpp \
   alert.cpp \
+  betting/bet_common.cpp \
+  betting/bet_tx.cpp \
+  betting/bet_db.cpp \
   betting/bet.cpp \
+  betting/bet_v2.cpp \
+  betting/bet_v3.cpp \
   bloom.cpp \
   blocksignature.cpp \
   chain.cpp \
@@ -271,6 +284,7 @@ libbitcoin_wallet_a_SOURCES = \
   masternode-sync.cpp \
   masternodeconfig.cpp \
   masternodeman.cpp \
+  messagesigner.cpp \
   wallet/rpcdump.cpp \
   wallet/rpcwallet.cpp \
   kernel.cpp \
@@ -286,9 +300,7 @@ libbitcoin_wallet_a_SOURCES = \
   zwgr/zwgrwallet.cpp \
   zwgr/zwgrtracker.cpp \
   stakeinput.cpp \
-  genwit.cpp \
   zwgr/zwgrmodule.cpp \
-  lightzwgrthread.cpp \
   $(BITCOIN_CORE_H)
 
 # crypto primitives library
@@ -298,6 +310,8 @@ crypto_libbitcoin_crypto_a_SOURCES = \
   crypto/sha1.cpp \
   crypto/sha256.cpp \
   crypto/sha512.cpp \
+  crypto/chacha20.h \
+  crypto/chacha20.cpp \
   crypto/hmac_sha256.cpp \
   crypto/rfc6979_hmac_sha256.cpp \
   crypto/hmac_sha512.cpp \
@@ -335,6 +349,7 @@ libzerocoin_libbitcoin_zerocoin_a_SOURCES = \
   libzerocoin/AccumulatorProofOfKnowledge.h \
   libzerocoin/bignum.h \
   libzerocoin/Coin.h \
+  libzerocoin/CoinRandomnessSchnorrSignature.h \
   libzerocoin/CoinSpend.h \
   libzerocoin/Commitment.h \
   libzerocoin/Denominations.h \
@@ -347,9 +362,10 @@ libzerocoin_libbitcoin_zerocoin_a_SOURCES = \
   libzerocoin/Accumulator.cpp \
   libzerocoin/AccumulatorProofOfKnowledge.cpp \
   libzerocoin/Coin.cpp \
-  libzerocoin/Denominations.cpp \
+  libzerocoin/CoinRandomnessSchnorrSignature.cpp \
   libzerocoin/CoinSpend.cpp \
   libzerocoin/Commitment.cpp \
+  libzerocoin/Denominations.cpp \
   libzerocoin/ParamGeneration.cpp \
   libzerocoin/Params.cpp \
   libzerocoin/SerialNumberSignatureOfKnowledge.cpp
@@ -370,10 +386,12 @@ libbitcoin_common_a_SOURCES = \
   allocators.cpp \
   amount.cpp \
   base58.cpp \
+  betting/quickgames/dice.cpp \
   bip38.cpp \
   chainparams.cpp \
   coins.cpp \
   compressor.cpp \
+  consensus/merkle.cpp \
   primitives/block.cpp \
   zwgr/deterministicmint.cpp \
   primitives/transaction.cpp \

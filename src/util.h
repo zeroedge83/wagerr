@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include <boost/filesystem/path.hpp>
 #include <boost/thread/exceptions.hpp>
@@ -53,7 +54,6 @@ extern std::map<std::string, std::vector<std::string> > mapMultiArgs;
 extern bool fDebug;
 extern bool fPrintToConsole;
 extern bool fPrintToDebugLog;
-extern bool fServer;
 extern std::string strMiscWarning;
 extern bool fLogTimestamps;
 extern bool fLogIPs;
@@ -123,7 +123,7 @@ static inline bool error(const char* format)
 
 double double_safe_addition(double fValue, double fIncrement);
 double double_safe_multiplication(double fValue, double fmultiplicator);
-void PrintExceptionContinue(std::exception* pex, const char* pszThread);
+void PrintExceptionContinue(const std::exception* pex, const char* pszThread);
 void ParseParameters(int argc, const char* const argv[]);
 void FileCommit(FILE* fileout);
 bool TruncateFile(FILE* file, unsigned int length);
@@ -244,6 +244,13 @@ void TraceThread(const char* name, Callable func)
         PrintExceptionContinue(NULL, name);
         throw;
     }
+}
+
+//! Substitute for C++14 std::make_unique.
+template <typename T, typename... Args>
+std::unique_ptr<T> MakeUnique(Args&&... args)
+{
+    return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 
 #endif // BITCOIN_UTIL_H

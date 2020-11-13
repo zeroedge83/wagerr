@@ -13,9 +13,9 @@
 #include "wallet/wallet.h"
 #include "zwgrchain.h"
 #include "main.h"
-#include "betting/bet.h"
+#include "betting/bet_tx.h"
 
-#include <iostream>
+#include <algorithm>
 #include <stdint.h>
 
 /* Return positive answer if transaction should be shown in list.
@@ -46,7 +46,7 @@ bool DecomposeBettingCoinstake(const CWallet* wallet, const CWalletTx& wtx, cons
     if (nStakeDepth <= 0) return false;
 
     const int nStakeHeight = pindexWtx->nHeight;
-    const CAmount nStakeValue = GetBlockValue(nStakeHeight - 1);
+    const CAmount nStakeValue = GetBlockValue(nStakeHeight);
 
     // ** TODO ** refactoring check
     //const CAmount nMNExpectedRewardValue = GetMasternodePayment(nStakeHeight, nStakeValue, 1, wtx.IsZerocoinSpend());
@@ -426,14 +426,12 @@ std::vector<TransactionRecord> TransactionRecord::decomposeTransaction(const CWa
                     bool isBettingEntry = false;
                     bool isChainGameEntry = false;
                     if (txout.scriptPubKey.IsUnspendable()) {
-                        std::vector<unsigned char> vOpCode = ParseHex(txout.scriptPubKey.ToString().substr(9, std::string::npos));
-                        std::string opCode(vOpCode.begin(), vOpCode.end());
 
-                        CPeerlessBet plBet;
-                        CChainGamesBet cgBet;
-                        if (CPeerlessBet::FromOpCode(opCode, plBet)) {
+                        auto bettingTx = ParseBettingTx(txout);
+
+                        if (bettingTx && bettingTx->GetTxType() == plBetTxType) {
                             isBettingEntry = true;
-                        } else if (CChainGamesBet::FromOpCode(opCode, cgBet)) {
+                        } else if (bettingTx && bettingTx->GetTxType() == cgBetTxType) {
                             isChainGameEntry = true;
                         }
                     }
@@ -496,13 +494,15 @@ bool IsZWGRType(TransactionRecord::Type type)
 void TransactionRecord::updateStatus(const CWalletTx& wtx)
 {
     AssertLockHeld(cs_main);
-    // Determine transaction status
+    int chainHeight = chainActive.Height();
 
+    CBlockIndex *pindex = nullptr;
     // Find the block the tx is in
-    CBlockIndex* pindex = NULL;
     BlockMap::iterator mi = mapBlockIndex.find(wtx.hashBlock);
     if (mi != mapBlockIndex.end())
         pindex = (*mi).second;
+
+    // Determine transaction status
 
     // Sort order, unrecorded transactions sort to the top
     status.sortKey = strprintf("%010d-%01d-%010u-%03d",
@@ -510,20 +510,22 @@ void TransactionRecord::updateStatus(const CWalletTx& wtx)
         (wtx.IsCoinBase() ? 1 : 0),
         wtx.nTimeReceived,
         idx);
-    //status.countsForBalance = wtx.IsTrusted() && !(wtx.GetBlocksToMaturity() > 0);
-    status.depth = wtx.GetDepthInMainChain();
 
-    //Determine the depth of the block
-    int nBlocksToMaturity = wtx.GetBlocksToMaturity();
+    bool fConflicted = false;
+    int depth = 0;
+    bool isTrusted = wtx.IsTrusted(depth, fConflicted);
+    const bool isOffline = (GetAdjustedTime() - wtx.nTimeReceived > 2 * 60 && wtx.GetRequestCount() == 0);
+    int nBlocksToMaturity = (wtx.IsCoinBase() || wtx.IsCoinStake()) ? std::max(0, (Params().COINBASE_MATURITY(chainHeight) + 1) - depth) : 0;
 
-    status.countsForBalance = wtx.IsTrusted() && !(nBlocksToMaturity > 0);
-    status.cur_num_blocks = chainActive.Height();
+    status.countsForBalance = isTrusted && !(nBlocksToMaturity > 0);
+    status.cur_num_blocks = chainHeight;
+    status.depth = depth;
     status.cur_num_ix_locks = nCompleteTXLocks;
 
-    if (!IsFinalTx(wtx, chainActive.Height() + 1)) {
+    if (!IsFinalTx(wtx, chainHeight + 1)) {
         if (wtx.nLockTime < LOCKTIME_THRESHOLD) {
             status.status = TransactionStatus::OpenUntilBlock;
-            status.open_for = wtx.nLockTime - chainActive.Height();
+            status.open_for = wtx.nLockTime - chainHeight;
         } else {
             status.status = TransactionStatus::OpenUntilDate;
             status.open_for = wtx.nLockTime;
@@ -535,9 +537,9 @@ void TransactionRecord::updateStatus(const CWalletTx& wtx)
             status.status = TransactionStatus::Immature;
             status.matures_in = nBlocksToMaturity;
 
-            if (pindex && chainActive.Contains(pindex)) {
+            if (status.depth >= 0 && !fConflicted) {
                 // Check if the block was requested by anyone
-                if (GetAdjustedTime() - wtx.nTimeReceived > 2 * 60 && wtx.GetRequestCount() == 0)
+                if (isOffline)
                     status.status = TransactionStatus::MaturesWarning;
             } else {
                 status.status = TransactionStatus::NotAccepted;
@@ -547,9 +549,9 @@ void TransactionRecord::updateStatus(const CWalletTx& wtx)
             status.matures_in = 0;
         }
     } else {
-        if (status.depth < 0) {
+        if (status.depth < 0 || fConflicted) {
             status.status = TransactionStatus::Conflicted;
-        } else if (GetAdjustedTime() - wtx.nTimeReceived > 2 * 60 && wtx.GetRequestCount() == 0) {
+        } else if (isOffline) {
             status.status = TransactionStatus::Offline;
         } else if (status.depth == 0) {
             status.status = TransactionStatus::Unconfirmed;

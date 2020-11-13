@@ -28,7 +28,8 @@ public:
 
     enum ColumnIndex {
         Label = 0,  /**< User specified label */
-        Address = 1 /**< Bitcoin address */
+        Address = 1, /**< Bitcoin address */
+        Date = 2 /**< Address creation date */
     };
 
     enum RoleIndex {
@@ -53,6 +54,8 @@ public:
         @{*/
     int rowCount(const QModelIndex& parent) const;
     int columnCount(const QModelIndex& parent) const;
+    int sizeSend() const;
+    int sizeRecv() const;
     QVariant data(const QModelIndex& index, int role) const;
     bool setData(const QModelIndex& index, const QVariant& value, int role);
     QVariant headerData(int section, Qt::Orientation orientation, int role) const;

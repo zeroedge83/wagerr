@@ -15,7 +15,7 @@
 #include "util.h"
 #include "utilstrencodings.h"
 #include "utiltime.h"
-#include "wallet.h"
+#include "wallet/wallet.h"
 
 #include <fstream>
 #include <secp256k1.h>
@@ -23,11 +23,8 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <openssl/aes.h>
-#include <openssl/sha.h>
 
 #include <univalue.h>
-
 
 std::string static EncodeDumpTime(int64_t nTime)
 {

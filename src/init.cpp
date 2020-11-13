@@ -1,6 +1,9 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2014 The Bitcoin developers
 // Copyright (c) 2014-2015 The Dash developers
+// Copyright (c) 2011-2013 The PPCoin developers
+// Copyright (c) 2013-2014 The NovaCoin Developers
+// Copyright (c) 2014-2018 The BlackCoin Developers
 // Copyright (c) 2015-2018 The PIVX developers
 // Copyright (c) 2018 The Wagerr developers
 // Distributed under the MIT software license, see the accompanying
@@ -28,6 +31,7 @@
 #include "masternode-payments.h"
 #include "masternodeconfig.h"
 #include "masternodeman.h"
+#include "messagesigner.h"
 #include "miner.h"
 #include "net.h"
 #include "rpc/server.h"
@@ -43,6 +47,7 @@
 #include "validationinterface.h"
 #include "zwgr/accumulatorcheckpoints.h"
 #include "zwgrchain.h"
+#include <betting/bet_db.h>
 
 #ifdef ENABLE_WALLET
 #include "wallet/db.h"
@@ -65,7 +70,6 @@
 #include <boost/interprocess/sync/file_lock.hpp>
 #include <boost/thread.hpp>
 #include <boost/foreach.hpp>
-#include <openssl/crypto.h>
 
 #if ENABLE_ZMQ
 #include "zmq/zmqnotificationinterface.h"
@@ -192,66 +196,6 @@ void PrepareShutdown()
     if (!lockShutdown)
         return;
 
-    // TODO - We are assuming that the use of locks will not be required when
-    // writing a map index to a .dat file because all writing to a
-    // .dat should happen on the same thread. If this is not the case
-    // then a lock mechanism will have to be implemented to ensure we don't
-    // corrupt any .dat when we want the write to it.
-    // Get the latest block hash.
-    CBlockIndex *blockIndex = chainActive[chainActive.Height()];
-
-    CBlock block;
-    ReadBlockFromDisk(block, blockIndex);
-    uint256 lastBlockHash = block.GetHash();
-
-    // Write the events index to disk.
-    eventIndex_t eventIndex;
-    CEventDB::GetEvents(eventIndex);
-    CEventDB edb;
-
-    if (!edb.Write(eventIndex, lastBlockHash))
-        LogPrintf("Failed to write to the events.dat\n");
-
-    // Write the sports mapping index to sports.dat.
-    mappingIndex_t sportsIndex;
-    CMappingDB msdb("sports.dat");
-    msdb.GetSports(sportsIndex);
-
-    if (!msdb.Write(sportsIndex, lastBlockHash))
-        LogPrintf("Failed to write to the sports.dat\n");
-
-    // Write the rounds mapping index to rounds.dat.
-    mappingIndex_t roundsIndex;
-    CMappingDB mrdb("rounds.dat");
-    mrdb.GetRounds(roundsIndex);
-
-    if (!mrdb.Write(roundsIndex, lastBlockHash))
-        LogPrintf("Failed to write to the rounds.dat\n");
-
-    // Write the teams mapping index to teams.dat.
-    mappingIndex_t teamsIndex;
-    CMappingDB mtdb("teams.dat");
-    mtdb.GetTeams(teamsIndex);
-
-    if (!mtdb.Write(teamsIndex, lastBlockHash))
-        LogPrintf("Failed to write to the teams.dat\n");
-
-    // Write the tournaments mapping index to tournaments.dat.
-    mappingIndex_t tournamentsIndex;
-    CMappingDB mtodb("tournaments.dat");
-    mtodb.GetTournaments(tournamentsIndex);
-
-    if (!mtodb.Write(tournamentsIndex, lastBlockHash))
-        LogPrintf("Failed to write to the tournaments.dat\n");
-
-    // Write the results index to results.dat.
-    CResultDB rdb;
-    resultsIndex_t resultsIndex;
-    rdb.GetResults(resultsIndex);
-
-    if (!rdb.Write(resultsIndex, lastBlockHash))
-        LogPrintf("Failed to write to the results.dat\n");
-
     /// Note: Shutdown() must be able to handle cases in which AppInit2() failed part of the way,
     /// for example if the data directory was found to be locked.
     /// Be sure that anything that writes files or flushes caches only does this if the respective
@@ -308,6 +252,8 @@ void PrepareShutdown()
         zerocoinDB = NULL;
         delete pSporkDB;
         pSporkDB = NULL;
+        delete bettingsView;
+        bettingsView = NULL;
     }
 #ifdef ENABLE_WALLET
     if (pwalletMain)
@@ -349,10 +295,6 @@ void Shutdown()
     }
     // Shutdown part 2: Stop TOR thread and delete wallet instance
     StopTorControl();
-    // Shutdown witness thread if it's enabled
-    if (nLocalServices == NODE_BLOOM_LIGHT_ZC) {
-        lightWorker.StopLightZwgrThread();
-    }
 #ifdef ENABLE_WALLET
     delete pwalletMain;
     pwalletMain = NULL;
@@ -369,13 +311,24 @@ void Shutdown()
  */
 void HandleSIGTERM(int)
 {
-    fRequestShutdown = true;
+    StartShutdown();
 }
 
 void HandleSIGHUP(int)
 {
     fReopenDebugLog = true;
 }
+
+#ifndef WIN32
+static void registerSignalHandler(int signal, void(*handler)(int))
+{
+    struct sigaction sa;
+    sa.sa_handler = handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(signal, &sa, nullptr);
+}
+#endif
 
 bool static InitError(const std::string& str)
 {
@@ -486,7 +439,6 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-onlynet=<net>", _("Only connect to nodes in network <net> (ipv4, ipv6 or onion)"));
     strUsage += HelpMessageOpt("-permitbaremultisig", strprintf(_("Relay non-P2SH multisig (default: %u)"), 1));
     strUsage += HelpMessageOpt("-peerbloomfilters", strprintf(_("Support filtering of blocks and transaction with bloom filters (default: %u)"), DEFAULT_PEERBLOOMFILTERS));
-    strUsage += HelpMessageOpt("-peerbloomfilterszc", strprintf(_("Support the zerocoin light node protocol (default: %u)"), DEFAULT_PEERBLOOMFILTERS_ZC));
     strUsage += HelpMessageOpt("-port=<port>", strprintf(_("Listen for connections on <port> (default: %u or testnet: %u)"), 55002, 55004));
     strUsage += HelpMessageOpt("-proxy=<ip:port>", _("Connect through SOCKS5 proxy"));
     strUsage += HelpMessageOpt("-proxyrandomize", strprintf(_("Randomize credentials for every proxy connection. This enables Tor stream isolation (default: %u)"), 1));
@@ -559,7 +511,7 @@ std::string HelpMessage(HelpMessageMode mode)
         strUsage += HelpMessageOpt("-stopafterblockimport", strprintf(_("Stop running after importing blocks from disk (default: %u)"), 0));
         strUsage += HelpMessageOpt("-sporkkey=<privkey>", _("Enable spork administration functionality with the appropriate private key."));
     }
-    std::string debugCategories = "addrman, alert, bench, coindb, db, lock, rand, rpc, selectcoins, tor, mempool, net, proxy, http, libevent, wagerr, (obfuscation, swiftx, masternode, mnpayments, mnbudget, zero, precompute, staking)"; // Don't translate these and qt below
+    std::string debugCategories = "addrman, alert, bench, coindb, db, lock, rand, rpc, selectcoins, tor, mempool, net, proxy, http, libevent, wagerr, (obfuscation, swiftx, masternode, mnpayments, mnbudget, zero, staking)"; // Don't translate these and qt below
     if (mode == HMM_BITCOIN_QT)
         debugCategories += ", qt";
     strUsage += HelpMessageOpt("-debug=<category>", strprintf(_("Output debugging information (default: %u, supplying <category> is optional)"), 0) + ". " +
@@ -622,8 +574,6 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-zeromintpercentage=<n>", strprintf(_("Percentage of automatically minted Zerocoin  (1-100, default: %u)"), 10));
     strUsage += HelpMessageOpt("-preferredDenom=<n>", strprintf(_("Preferred Denomination for automatically minted Zerocoin  (1/5/10/50/100/500/1000/5000), 0 for no preference. default: %u)"), 0));
     strUsage += HelpMessageOpt("-backupzwgr=<n>", strprintf(_("Enable automatic wallet backups triggered after each zWGR minting (0-1, default: %u)"), 1));
-    strUsage += HelpMessageOpt("-precompute=<n>", strprintf(_("Enable precomputation of zWGR spends and stakes (0-1, default %u)"), 1));
-    strUsage += HelpMessageOpt("-precomputecachelength=<n>", strprintf(_("Set the number of included blocks to precompute per cycle. (minimum: %d) (maximum: %d) (default: %d)"), MIN_PRECOMPUTE_LENGTH, MAX_PRECOMPUTE_LENGTH, DEFAULT_PRECOMPUTE_LENGTH));
     strUsage += HelpMessageOpt("-zwgrbackuppath=<dir|file>", _("Specify custom backup path to add a copy of any automatic zWGR backup. If set as dir, every backup generates a timestamped file. If set as file, will rewrite to that file every backup. If backuppath is set as well, 4 backups will happen"));
 #endif // ENABLE_WALLET
     strUsage += HelpMessageOpt("-reindexzerocoin=<n>", strprintf(_("Delete all zerocoin spends and mints that have been recorded to the blockchain database and reindex them (0-1, default: %u)"), 0));
@@ -784,8 +734,14 @@ bool InitSanityCheck(void)
         InitError("Elliptic curve cryptography sanity check failure. Aborting.");
         return false;
     }
+
     if (!glibc_sanity_test() || !glibcxx_sanity_test())
         return false;
+
+    if (!Random_SanityCheck()) {
+        InitError("OS cryptographic RNG sanity check failure. Aborting.");
+        return false;
+    }
 
     return true;
 }
@@ -808,10 +764,20 @@ bool AppInitServers()
     return true;
 }
 
-/** Initialize wagerr.
- *  @pre Parameters should be parsed and config file should be read.
- */
-bool AppInit2()
+[[noreturn]] static void new_handler_terminate()
+{
+    // Rather than throwing std::bad-alloc if allocation fails, terminate
+    // immediately to (try to) avoid chain corruption.
+    // Since LogPrintf may itself allocate memory, set the handler directly
+    // to terminate first.
+    std::set_new_handler(std::terminate);
+    LogPrintf("Error: Out of memory. Terminating.\n");
+
+    // The log was successful, terminate now.
+    std::terminate();
+};
+
+bool AppInitBasicSetup()
 {
 // ********************************************************* Step 1: setup
 #ifdef _MSC_VER
@@ -824,7 +790,7 @@ bool AppInit2()
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
 #ifdef WIN32
-// Enable Data Execution Prevention (DEP)
+    // Enable Data Execution Prevention (DEP)
 // Minimum supported OS versions: WinXP SP3, WinVista >= SP1, Win Server 2008
 // A failure is non-critical and needs no further attention!
 #ifndef PROCESS_DEP_ENABLE
@@ -850,25 +816,30 @@ bool AppInit2()
         umask(077);
     }
 
-
-    // Clean shutdown on SIGTERM
-    struct sigaction sa;
-    sa.sa_handler = HandleSIGTERM;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sigaction(SIGTERM, &sa, NULL);
-    sigaction(SIGINT, &sa, NULL);
+    // Clean shutdown on SIGTERMx
+    registerSignalHandler(SIGTERM, HandleSIGTERM);
+    registerSignalHandler(SIGINT, HandleSIGTERM);
 
     // Reopen debug.log on SIGHUP
-    struct sigaction sa_hup;
-    sa_hup.sa_handler = HandleSIGHUP;
-    sigemptyset(&sa_hup.sa_mask);
-    sa_hup.sa_flags = 0;
-    sigaction(SIGHUP, &sa_hup, NULL);
+    registerSignalHandler(SIGHUP, HandleSIGHUP);
 
     // Ignore SIGPIPE, otherwise it will bring the daemon down if the client closes unexpectedly
     signal(SIGPIPE, SIG_IGN);
 #endif
+
+    std::set_new_handler(new_handler_terminate);
+
+    return true;
+}
+
+/** Initialize wagerr.
+ *  @pre Parameters should be parsed and config file should be read.
+ */
+bool AppInit2()
+{
+    // ********************************************************* Step 1: setup
+    if (!AppInitBasicSetup())
+        return false;
 
     // ********************************************************* Step 2: parameter interactions
     // Set this early so that parameter interactions go to console
@@ -932,6 +903,12 @@ bool AppInit2()
             LogPrintf("AppInit2 : parameter interaction: -zapwallettxes=<mode> -> setting -rescan=1\n");
     }
 
+    // -resync implies zapping wallet transactions
+    if (GetBoolArg("-resync", false) && !mapArgs.count("-zapwallettxes")) {
+        if (SoftSetArg("-zapwallettxes", std::string("1")))
+            LogPrintf("AppInit2 : parameter interaction: -resync=true -> default of -zapwallettxes=1 unless explicitly specified otherwise\n");
+    }
+
     if (!GetBoolArg("-enableswifttx", fEnableSwiftTX)) {
         if (SoftSetArg("-swifttxdepth", "0"))
             LogPrintf("AppInit2 : parameter interaction: -enableswifttx=false -> setting -nSwiftTXDepth=0\n");
@@ -975,6 +952,10 @@ bool AppInit2()
     if (mapArgs.count("-checklevel"))
         return InitError(_("Error: Unsupported argument -checklevel found. Checklevel must be level 4."));
 
+    // Maximum number of blocks is limited by the depth of the betting undo information
+    if (GetArg("-checkblocks", 100) > Params().MaxBettingUndoDepth())
+        return InitError(strprintf(_("InError: Maximum number of blocks to check is %d"), Params().MaxBettingUndoDepth()));
+
     if (GetBoolArg("-benchmark", false))
         InitWarning(_("Warning: Unsupported argument -benchmark ignored, use -debug=bench."));
 
@@ -992,7 +973,6 @@ bool AppInit2()
     else if (nScriptCheckThreads > MAX_SCRIPTCHECK_THREADS)
         nScriptCheckThreads = MAX_SCRIPTCHECK_THREADS;
 
-    fServer = GetBoolArg("-server", false);
     setvbuf(stdout, NULL, _IOLBF, 0); /// ***TODO*** do we still need this after -printtoconsole is gone?
 
     // Staking needs a CWallet instance, so make sure wallet is enabled
@@ -1070,21 +1050,15 @@ bool AppInit2()
 
     fAlerts = GetBoolArg("-alerts", DEFAULT_ALERTS);
 
-    if (GetBoolArg("-peerbloomfilterszc", DEFAULT_PEERBLOOMFILTERS_ZC))
-        nLocalServices |= NODE_BLOOM_LIGHT_ZC;
-
-    if (nLocalServices != NODE_BLOOM_LIGHT_ZC) {
-
-        if (GetBoolArg("-peerbloomfilters", DEFAULT_PEERBLOOMFILTERS))
-            nLocalServices |= NODE_BLOOM;
-
-    }
+    if (GetBoolArg("-peerbloomfilters", DEFAULT_PEERBLOOMFILTERS))
+        nLocalServices |= NODE_BLOOM;
 
     nMaxTipAge = GetArg("-maxtipage", DEFAULT_MAX_TIP_AGE);
 
     // ********************************************************* Step 4: application initialization: dir lock, daemonize, pidfile, debug log
 
     // Initialize elliptic curve code
+    RandomInit();
     ECC_Start();
     globalVerifyHandle.reset(new ECCVerifyHandle());
 
@@ -1115,7 +1089,6 @@ bool AppInit2()
         ShrinkDebugFile();
     LogPrintf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
     LogPrintf("WAGERR version %s (%s)\n", FormatFullVersion(), CLIENT_DATE);
-    LogPrintf("Using OpenSSL version %s\n", SSLeay_version(SSLEAY_VERSION));
 #ifdef ENABLE_WALLET
     LogPrintf("Using BerkeleyDB version %s\n", DbEnv::version(0, 0, 0));
 #endif
@@ -1148,13 +1121,11 @@ bool AppInit2()
      * that the server is there and will be ready later).  Warmup mode will
      * be disabled when initialisation is finished.
      */
-    if (fServer) {
+    if (GetBoolArg("-server", false)) {
         uiInterface.InitMessage.connect(SetRPCWarmupStatus);
         if (!AppInitServers())
             return InitError(_("Unable to start HTTP server. See debug log for details."));
     }
-
-    int64_t nStart;
 
 // ********************************************************* Step 5: Backup wallet and verify wallet database integrity
 #ifdef ENABLE_WALLET
@@ -1183,7 +1154,7 @@ bool AppInit2()
                     try {
                         boost::filesystem::copy_file(sourceFile, backupFile);
                         LogPrintf("Creating backup of %s -> %s\n", sourceFile, backupFile);
-                    } catch (boost::filesystem::filesystem_error& error) {
+                    } catch (const boost::filesystem::filesystem_error& error) {
                         LogPrintf("Failed to create backup %s\n", error.what());
                     }
 #else
@@ -1219,7 +1190,7 @@ bool AppInit2()
                         try {
                             boost::filesystem::remove(file.second);
                             LogPrintf("Old backup deleted: %s\n", file.second);
-                        } catch (boost::filesystem::filesystem_error& error) {
+                        } catch (const boost::filesystem::filesystem_error& error) {
                             LogPrintf("Failed to delete backup %s\n", error.what());
                         }
                     }
@@ -1234,12 +1205,7 @@ bool AppInit2()
             boost::filesystem::path chainstateDir = GetDataDir() / "chainstate";
             boost::filesystem::path sporksDir = GetDataDir() / "sporks";
             boost::filesystem::path zerocoinDir = GetDataDir() / "zerocoin";
-            boost::filesystem::path eventsDat = GetDataDir() / "events.dat";
-            boost::filesystem::path sportsDat = GetDataDir() / "sports.dat";
-            boost::filesystem::path roundsDat = GetDataDir() / "rounds.dat";
-            boost::filesystem::path teamsDat = GetDataDir() / "teams.dat";
-            boost::filesystem::path tournamentsDat = GetDataDir() / "tournaments.dat";
-            boost::filesystem::path resultsDat = GetDataDir() / "results.dat";
+            boost::filesystem::path bettingDir = GetDataDir() / "betting";
 
             LogPrintf("Deleting blockchain folders blocks, chainstate, sporks and zerocoin\n");
             // We delete in 4 individual steps in case one of the folder is missing already
@@ -1264,38 +1230,11 @@ bool AppInit2()
                     LogPrintf("-resync: folder deleted: %s\n", zerocoinDir.string().c_str());
                 }
 
-                // Remove betting .dat files on resync.
-                if (boost::filesystem::exists(eventsDat)) {
-                    boost::filesystem::remove(eventsDat);
-                    LogPrintf("-resync: file deleted: %s\n", eventsDat.string().c_str());
+                if (boost::filesystem::exists(bettingDir)){
+                    boost::filesystem::remove_all(bettingDir);
+                    LogPrintf("-resync: folder deleted: %s\n", bettingDir.string().c_str());
                 }
-
-                if (boost::filesystem::exists(sportsDat)) {
-                    boost::filesystem::remove(sportsDat);
-                    LogPrintf("-resync: file deleted: %s\n", sportsDat.string().c_str());
-                }
-
-                if (boost::filesystem::exists(roundsDat)) {
-                    boost::filesystem::remove(roundsDat);
-                    LogPrintf("-resync: file deleted: %s\n", roundsDat.string().c_str());
-                }
-
-                if (boost::filesystem::exists(teamsDat)) {
-                    boost::filesystem::remove(teamsDat);
-                    LogPrintf("-resync: file deleted: %s\n", teamsDat.string().c_str());
-                }
-
-                if (boost::filesystem::exists(tournamentsDat)) {
-                    boost::filesystem::remove(tournamentsDat);
-                    LogPrintf("-resync: file deleted: %s\n", tournamentsDat.string().c_str());
-                }
-
-                if (boost::filesystem::exists(resultsDat)) {
-                    boost::filesystem::remove(resultsDat);
-                    LogPrintf("-resync: file deleted: %s\n", resultsDat.string().c_str());
-                }
-
-            } catch (boost::filesystem::filesystem_error& error) {
+            } catch (const boost::filesystem::filesystem_error& error) {
                 LogPrintf("Failed to delete blockchain folders %s\n", error.what());
             }
         }
@@ -1310,7 +1249,7 @@ bool AppInit2()
             try {
                 boost::filesystem::rename(pathDatabase, pathDatabaseBak);
                 LogPrintf("Moved old %s to %s. Retrying.\n", pathDatabase.string(), pathDatabaseBak.string());
-            } catch (boost::filesystem::filesystem_error& error) {
+            } catch (const boost::filesystem::filesystem_error& error) {
                 // failure is ok (well, not really, but it's not worse than what we started with)
             }
 
@@ -1494,14 +1433,15 @@ bool AppInit2()
     nCoinCacheSize = nTotalCache / 300; // coins in memory require around 300 bytes
 
     bool fLoaded = false;
-    while (!fLoaded) {
+    while (!fLoaded && !ShutdownRequested()) {
         bool fReset = fReindex;
         std::string strLoadError;
 
         uiInterface.InitMessage(_("Loading block index..."));
 
-        nStart = GetTimeMillis();
         do {
+            const int64_t load_block_index_start_time = GetTimeMillis();
+
             try {
                 UnloadBlockIndex();
                 delete pcoinsTip;
@@ -1510,6 +1450,7 @@ bool AppInit2()
                 delete pblocktree;
                 delete zerocoinDB;
                 delete pSporkDB;
+                delete bettingsView;
 
                 //WAGERR specific: zerocoin and spork DB's
                 zerocoinDB = new CZerocoinDB(0, false, fReindex);
@@ -1520,76 +1461,64 @@ bool AppInit2()
                 pcoinscatcher = new CCoinsViewErrorCatcher(pcoinsdbview);
                 pcoinsTip = new CCoinsViewCache(pcoinscatcher);
 
-                // TODO - When reading from the events.dat we also return the
-                // last block hash. The idea was to use this to cycle the block chain
-                // from that block and update the event index with any missing data.
-                // AcceptBlock() already does this, but if this is not good enough
-                // then we may have to implement the solution outlined above.
-                // Load up the events from the events.dat.
-                eventIndex_t eventIndex;
-                uint256 lastBlockHash;
-                CEventDB edb;
+                // Flushable database model has the following structure:
+                // globalDB: --(r, w, del, exist)--> { CacheDB_glob_map -> { LevelDB } }.
+                // If we need make cache from global DB, for example,
+                // in those places where it is made in the original BitcoinCore,
+                // we should make CBettingsView cacheDb(globalDb) and the structure will be:
+                // cacheDB: --(r, w, del, exist)--> { CacheDB_loc_map -> { CacheDB_glob_map -> { LevelDB } } }.
+                // The Flush() operation at cacheDB will copy data from CacheDB_loc_map to CacheDB_glob_map
+                // and the Flush() at globalDB will write data from CacheDB_glob_map to LevelDB (persistent storage).
+                bettingsView = new CBettingsView();
+                // create Level DB storage for global betting database
+                bettingsView->mappingsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("mappings"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                // create cacheble betting DB with LevelDB storage as main storage
+                bettingsView->mappings = MakeUnique<CBettingDB>(*bettingsView->mappingsStorage.get());
 
-                if (!edb.Read(eventIndex, lastBlockHash))
-                    LogPrintf("Invalid or missing events.dat; recreating\n");
+                bettingsView->eventsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("events"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->events = MakeUnique<CBettingDB>(*bettingsView->eventsStorage.get());
 
-                CEventDB::SetEvents(eventIndex);
+                bettingsView->resultsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("results"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->results = MakeUnique<CBettingDB>(*bettingsView->resultsStorage.get());
 
-                // Load up the sports from the sports.dat.
-                CMappingDB cmSportsDb("sports.dat");
-                mappingIndex_t sportsIndex;
-                uint256 sportsLastBlockHash;
-                if (!cmSportsDb.Read(sportsIndex, sportsLastBlockHash))
-                    LogPrintf("Invalid or missing sports.dat; recreating\n");
+                bettingsView->betsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("bets"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->bets = MakeUnique<CBettingDB>(*bettingsView->betsStorage.get());
 
-                cmSportsDb.SetSports(sportsIndex);
+                bettingsView->undosStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("undos"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->undos = MakeUnique<CBettingDB>(*bettingsView->undosStorage.get());
 
-                // Load up the rounds from the rounds.dat.
-                CMappingDB cmRoundsDb("rounds.dat");
-                mappingIndex_t roundsIndex;
-                uint256 roundsLastBlockHash;
-                if (!cmRoundsDb.Read(roundsIndex, roundsLastBlockHash))
-                    LogPrintf("Invalid or missing rounds.dat; recreating\n");
+                bettingsView->payoutsInfoStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("payoutsinfo"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->payoutsInfo = MakeUnique<CBettingDB>(*bettingsView->payoutsInfoStorage.get());
 
-                cmRoundsDb.SetRounds(roundsIndex);
+                bettingsView->quickGamesBetsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("quickgamesbets"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->quickGamesBets = MakeUnique<CBettingDB>(*bettingsView->quickGamesBetsStorage.get());
 
-                // Load up the teams from the teams.dat.
-                CMappingDB cmTeamsDb("teams.dat");
-                mappingIndex_t teamsIndex;
-                uint256 teamsLastBlockHash;
-                if (!cmTeamsDb.Read(teamsIndex, teamsLastBlockHash))
-                    LogPrintf("Invalid or missing teams.dat; recreating\n");
+                bettingsView->chainGamesLottoEventsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("cglottoevents"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->chainGamesLottoEvents = MakeUnique<CBettingDB>(*bettingsView->chainGamesLottoEventsStorage.get());
 
-                cmTeamsDb.SetTeams(teamsIndex);
+                bettingsView->chainGamesLottoBetsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("cglottobets"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->chainGamesLottoBets = MakeUnique<CBettingDB>(*bettingsView->chainGamesLottoBetsStorage.get());
 
-                // Load up the tournaments from the tournaments.dat.
-                CMappingDB cmTournamentsDb("tournaments.dat");
-                mappingIndex_t tournamentsIndex;
-                uint256 tournamentsLastBlockHash;
-                if (!cmTournamentsDb.Read(tournamentsIndex, tournamentsLastBlockHash))
-                    LogPrintf("Invalid or missing tournaments.dat; recreating\n");
+                bettingsView->chainGamesLottoResultsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("cglottoresults"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->chainGamesLottoResults = MakeUnique<CBettingDB>(*bettingsView->chainGamesLottoResultsStorage.get());
 
-                cmTournamentsDb.SetTournaments(tournamentsIndex);
-
-                // Load up the results from the results.dat.
-                CResultDB rdb;
-                resultsIndex_t resultsIndex;
-                uint256 resultsLastBlockHash;
-                if (!rdb.Read(resultsIndex, resultsLastBlockHash))
-                    LogPrintf("Invalid or missing results.dat; recreating\n");
-
-                rdb.SetResults(resultsIndex);
+                bettingsView->failedBettingTxsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("failedtxs"), CBettingDB::dbWrapperCacheSize(), false, fReindex);
+                bettingsView->failedBettingTxs = MakeUnique<CBettingDB>(*bettingsView->failedBettingTxsStorage.get());
 
                 if (fReindex)
                     pblocktree->WriteReindexing(true);
 
+                // End loop if shutdown was requested
+                if (ShutdownRequested()) break;
+
                 // WAGERR: load previous sessions sporks if we have them.
                 uiInterface.InitMessage(_("Loading sporks..."));
-                LoadSporksFromDB();
+                sporkManager.LoadSporksFromDB();
 
                 uiInterface.InitMessage(_("Loading block index..."));
                 std::string strBlockIndexError = "";
                 if (!LoadBlockIndex(strBlockIndexError)) {
+                    if (ShutdownRequested()) break;
                     strLoadError = _("Error loading block database");
                     strLoadError = strprintf("%s : %s", strLoadError, strBlockIndexError);
                     break;
@@ -1676,7 +1605,7 @@ bool AppInit2()
                 if (GetBoolArg("-reindexaccumulators", false)) {
                     if (chainHeight > Params().Zerocoin_Block_V2_Start()) {
                         CBlockIndex *pindex = chainActive[Params().Zerocoin_Block_V2_Start()];
-                        while (pindex->nHeight < chainActive.Height()) {
+                        while (pindex && pindex->nHeight < std::min(chainActive.Height(), Params().Zerocoin_Block_Last_Checkpoint()+1)) {
                             if (!count(listAccCheckpointsNoDB.begin(), listAccCheckpointsNoDB.end(),
                                        pindex->nAccumulatorCheckpoint))
                                 listAccCheckpointsNoDB.emplace_back(pindex->nAccumulatorCheckpoint);
@@ -1714,12 +1643,13 @@ bool AppInit2()
 
                     // Zerocoin must check at level 4
                     if (!CVerifyDB().VerifyDB(pcoinsdbview, 4, GetArg("-checkblocks", 100))) {
-                        strLoadError = _("Corrupted block database detected");
+                        strLoadError = _("Inconsistent block database detected. This might be the result of an upgrade or of a database corruption");
                         fVerifyingBlocks = false;
                         break;
                     }
+
                 }
-            } catch (std::exception& e) {
+            } catch (const std::exception& e) {
                 if (fDebug) LogPrintf("%s\n", e.what());
                 strLoadError = _("Error opening block database");
                 fVerifyingBlocks = false;
@@ -1728,9 +1658,10 @@ bool AppInit2()
 
             fVerifyingBlocks = false;
             fLoaded = true;
+            LogPrintf(" block index %15dms\n", GetTimeMillis() - load_block_index_start_time);
         } while (false);
 
-        if (!fLoaded) {
+        if (!fLoaded && !ShutdownRequested()) {
             // first suggest a reindex
             if (!fReset) {
                 bool fRet = uiInterface.ThreadSafeMessageBox(
@@ -1752,11 +1683,10 @@ bool AppInit2()
     // As LoadBlockIndex can take several minutes, it's possible the user
     // requested to kill the GUI during the last operation. If so, exit.
     // As the program has not fully started yet, Shutdown() is possibly overkill.
-    if (fRequestShutdown) {
+    if (ShutdownRequested()) {
         LogPrintf("Shutdown requested. Exiting.\n");
         return false;
     }
-    LogPrintf(" block index %15dms\n", GetTimeMillis() - nStart);
 
     boost::filesystem::path est_path = GetDataDir() / FEE_ESTIMATES_FILENAME;
     CAutoFile est_filein(fopen(est_path.string().c_str(), "rb"), SER_DISK, CLIENT_VERSION);
@@ -1792,7 +1722,7 @@ bool AppInit2()
         uiInterface.InitMessage(_("Loading wallet..."));
         fVerifyingBlocks = true;
 
-        nStart = GetTimeMillis();
+        const int64_t nWalletStartTime = GetTimeMillis();
         bool fFirstRun = true;
         pwalletMain = new CWallet(strWalletFile);
         DBErrors nLoadWalletRet = pwalletMain->LoadWallet(fFirstRun);
@@ -1829,20 +1759,19 @@ bool AppInit2()
 
         if (fFirstRun) {
             // Create new keyUser and set as default key
-            RandAddSeedPerfmon();
-
             CPubKey newDefaultKey;
-            if (pwalletMain->GetKeyFromPool(newDefaultKey)) {
-                pwalletMain->SetDefaultKey(newDefaultKey);
-                if (!pwalletMain->SetAddressBook(pwalletMain->vchDefaultKey.GetID(), "", "receive"))
-                    strErrors << _("Cannot write default address") << "\n";
+            // Top up the keypool
+            if (!pwalletMain->TopUpKeyPool()) {
+                // Error generating keys
+                InitError(_("Unable to generate initial key") += "\n");
+                return error("%s %s", __func__ , "Unable to generate initial key");
             }
 
             pwalletMain->SetBestChain(chainActive.GetLocator());
         }
 
-        LogPrintf("%s", strErrors.str());
-        LogPrintf(" wallet      %15dms\n", GetTimeMillis() - nStart);
+        LogPrintf("Init errors: %s\n", strErrors.str());
+        LogPrintf("Wallet completed loading in %15dms\n", GetTimeMillis() - nWalletStartTime);
         zwalletMain = new CzWGRWallet(pwalletMain->strWalletFile);
         pwalletMain->setZWallet(zwalletMain);
 
@@ -1862,14 +1791,17 @@ bool AppInit2()
         if (chainActive.Tip() && chainActive.Tip() != pindexRescan) {
             uiInterface.InitMessage(_("Rescanning..."));
             LogPrintf("Rescanning last %i blocks (from block %i)...\n", chainActive.Height() - pindexRescan->nHeight, pindexRescan->nHeight);
-            nStart = GetTimeMillis();
-            pwalletMain->ScanForWalletTransactions(pindexRescan, true);
-            LogPrintf(" rescan      %15dms\n", GetTimeMillis() - nStart);
+            const int64_t nWalletRescanTime = GetTimeMillis();
+            if (pwalletMain->ScanForWalletTransactions(pindexRescan, true, true) == -1) {
+                return error("Shutdown requested over the txs scan. Exiting.");
+            }
+            LogPrintf("Rescan completed in %15dms\n", GetTimeMillis() - nWalletRescanTime);
             pwalletMain->SetBestChain(chainActive.GetLocator());
             nWalletDBUpdated++;
 
             // Restore wallet transaction metadata after -zapwallettxes=1
             if (GetBoolArg("-zapwallettxes", false) && GetArg("-zapwallettxes", "1") != "2") {
+                CWalletDB walletdb(strWalletFile);
                 for (const CWalletTx& wtxOld : vWtx) {
                     uint256 hash = wtxOld.GetHash();
                     std::map<uint256, CWalletTx>::iterator mi = pwalletMain->mapWallet.find(hash);
@@ -1883,7 +1815,7 @@ bool AppInit2()
                         copyTo->fFromMe = copyFrom->fFromMe;
                         copyTo->strFromAccount = copyFrom->strFromAccount;
                         copyTo->nOrderPos = copyFrom->nOrderPos;
-                        copyTo->WriteToDisk();
+                        copyTo->WriteToDisk(&walletdb);
                     }
                 }
             }
@@ -2009,7 +1941,7 @@ bool AppInit2()
             CKey key;
             CPubKey pubkey;
 
-            if (!obfuScationSigner.SetKey(strMasterNodePrivKey, errorMessage, key, pubkey)) {
+            if (!CMessageSigner::GetKeysFromSecret(strMasterNodePrivKey, key, pubkey)) {
                 return InitError(_("Invalid masternodeprivkey. Please see documenation."));
             }
 
@@ -2082,6 +2014,11 @@ bool AppInit2()
 
     threadGroup.create_thread(boost::bind(&ThreadCheckObfuScationPool));
 
+    if (ShutdownRequested()) {
+        LogPrintf("Shutdown requested. Exiting.\n");
+        return false;
+    }
+
     // ********************************************************* Step 11: start node
 
     if (!CheckDiskSpace())
@@ -2089,8 +2026,6 @@ bool AppInit2()
 
     if (!strErrors.str().empty())
         return InitError(strErrors.str());
-
-    RandAddSeedPerfmon();
 
     //// debug print
     LogPrintf("mapBlockIndex.size() = %u\n", mapBlockIndex.size());
@@ -2106,11 +2041,6 @@ bool AppInit2()
 
     StartNode(threadGroup, scheduler);
 
-    if (nLocalServices & NODE_BLOOM_LIGHT_ZC) {
-        // Run a thread to compute witnesses
-        lightWorker.StartLightZwgrThread(threadGroup);
-    }
-
 #ifdef ENABLE_WALLET
     // Generate coins in the background
     if (pwalletMain)
@@ -2125,18 +2055,13 @@ bool AppInit2()
 #ifdef ENABLE_WALLET
     if (pwalletMain) {
         // Add wallet transactions that aren't already in a block to mapTransactions
-        pwalletMain->ReacceptWalletTransactions();
+        pwalletMain->ReacceptWalletTransactions(/*fFirstLoad*/true);
 
         // Run a thread to flush wallet periodically
         threadGroup.create_thread(boost::bind(&ThreadFlushWalletDB, boost::ref(pwalletMain->strWalletFile)));
 
-        if (GetBoolArg("-precompute", false)) {
-            // Run a thread to precompute any zWGR spends
-            threadGroup.create_thread(boost::bind(&ThreadPrecomputeSpends));
-        }
-
-        if (GetBoolArg("-staking", true)) {
-            // ppcoin:mint proof-of-stake blocks in the background
+        // StakeMiner thread disabled by default on regtest
+        if (GetBoolArg("-staking", Params().NetworkID() != CBaseChainParams::REGTEST)) {
             threadGroup.create_thread(boost::bind(&ThreadStakeMinter));
         }
     }

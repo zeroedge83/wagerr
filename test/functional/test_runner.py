@@ -73,6 +73,8 @@ BASE_SCRIPTS= [
     #'zerocoin_wrapped_serials.py',
     #'feature_block.py',
     #'rpc_fundrawtransaction.py',
+    'feature_betting.py',
+    'feature_quickgame_dice.py',
 
     # vv Tests less than 2m vv
     #'feature_uacomment.py', # Not Applicable -uacomment not supported
@@ -106,6 +108,7 @@ BASE_SCRIPTS= [
     #'rpc_deprecated.py', # No deprecated commands in Wagerr
     'wallet_disable.py',
     #'rpc_net.py', # Not Working -- TODO Fix it
+    'p2p_time_offset.py',
     'wallet_keypool.py',
     #'p2p_mempool.py',
     #'mining_prioritisetransaction.py',

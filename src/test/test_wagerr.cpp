@@ -8,6 +8,8 @@
 
 #include "test_wagerr.h"
 
+#include "betting/bet.h"
+#include "betting/bet_db.h"
 #include "main.h"
 #include "random.h"
 #include "txdb.h"
@@ -23,11 +25,15 @@
 CClientUIInterface uiInterface;
 CWallet* pwalletMain;
 
+uint256 insecure_rand_seed = GetRandHash();
+FastRandomContext insecure_rand_ctx(insecure_rand_seed);
+
 extern bool fPrintToConsole;
 extern void noui_connect();
 
 BasicTestingSetup::BasicTestingSetup()
 {
+        RandomInit();
         ECC_Start();
         SetupEnvironment();
         fPrintToDebugLog = false; // don't want to write to debug.log file
@@ -45,12 +51,50 @@ TestingSetup::TestingSetup()
         bitdb.MakeMock();
 #endif
         ClearDatadirCache();
-        pathTemp = GetTempPath() / strprintf("test_wagerr_%lu_%i", (unsigned long)GetTime(), (int)(GetRand(100000)));
+        pathTemp = GetTempPath() / strprintf("test_wagerr_%lu_%i", (unsigned long)GetTime(), (int)(InsecureRandRange(100000)));
         boost::filesystem::create_directories(pathTemp);
         mapArgs["-datadir"] = pathTemp.string();
         pblocktree = new CBlockTreeDB(1 << 20, true);
         pcoinsdbview = new CCoinsViewDB(1 << 23, true);
         pcoinsTip = new CCoinsViewCache(pcoinsdbview);
+
+        bettingsView = new CBettingsView();
+        // create Level DB storage for global betting database
+        bettingsView->mappingsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-mappings"), CBettingDB::dbWrapperCacheSize(), true);
+        // create cacheble betting DB with LevelDB storage as main storage
+        bettingsView->mappings = MakeUnique<CBettingDB>(*bettingsView->mappingsStorage.get());
+
+        bettingsView->eventsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-events"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->events = MakeUnique<CBettingDB>(*bettingsView->eventsStorage.get());
+
+        bettingsView->resultsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-results"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->results = MakeUnique<CBettingDB>(*bettingsView->resultsStorage.get());
+
+        bettingsView->betsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-bets"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->bets = MakeUnique<CBettingDB>(*bettingsView->betsStorage.get());
+
+        bettingsView->undosStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-undos"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->undos = MakeUnique<CBettingDB>(*bettingsView->undosStorage.get());
+
+        bettingsView->payoutsInfoStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-payoutsinfo"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->payoutsInfo = MakeUnique<CBettingDB>(*bettingsView->payoutsInfoStorage.get());
+
+        bettingsView->quickGamesBetsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-quickgamesbets"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->quickGamesBets = MakeUnique<CBettingDB>(*bettingsView->quickGamesBetsStorage.get());
+
+        bettingsView->chainGamesLottoEventsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-cglottoevents"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->chainGamesLottoEvents = MakeUnique<CBettingDB>(*bettingsView->chainGamesLottoEventsStorage.get());
+
+        bettingsView->chainGamesLottoBetsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-cglottobets"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->chainGamesLottoBets = MakeUnique<CBettingDB>(*bettingsView->chainGamesLottoBetsStorage.get());
+
+        bettingsView->chainGamesLottoResultsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-cglottoresults"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->chainGamesLottoResults = MakeUnique<CBettingDB>(*bettingsView->chainGamesLottoResultsStorage.get());
+
+        bettingsView->failedBettingTxsStorage = MakeUnique<CStorageLevelDB>(CBettingDB::MakeDbPath("test-failedtxs"), CBettingDB::dbWrapperCacheSize(), true);
+        bettingsView->failedBettingTxs = MakeUnique<CBettingDB>(*bettingsView->failedBettingTxsStorage.get());
+
+
         InitBlockIndex();
 #ifdef ENABLE_WALLET
         bool fFirstRun;
@@ -78,6 +122,7 @@ TestingSetup::~TestingSetup()
         delete pcoinsTip;
         delete pcoinsdbview;
         delete pblocktree;
+        delete bettingsView;
 #ifdef ENABLE_WALLET
         bitdb.Flush(true);
         bitdb.Reset();
@@ -85,14 +130,14 @@ TestingSetup::~TestingSetup()
         boost::filesystem::remove_all(pathTemp);
 }
 
-void Shutdown(void* parg)
+[[noreturn]] void Shutdown(void* parg)
 {
-  exit(0);
+    std::exit(0);
 }
 
-void StartShutdown()
+[[noreturn]] void StartShutdown()
 {
-  exit(0);
+    std::exit(0);
 }
 
 bool ShutdownRequested()

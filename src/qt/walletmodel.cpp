@@ -21,6 +21,7 @@
 #include "guiinterface.h"
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h" // for BackupWallet
+#include "zwgr/deterministicmint.h"
 #include <stdint.h>
 
 #include <QDebug>
@@ -55,6 +56,14 @@ WalletModel::WalletModel(CWallet* wallet, OptionsModel* optionsModel, QObject* p
 WalletModel::~WalletModel()
 {
     unsubscribeFromCoreSignals();
+}
+
+bool WalletModel::isTestnet() const {
+    return Params().NetworkID() == CBaseChainParams::TESTNET;
+}
+
+bool WalletModel::isStakingStatusActive() const {
+    return wallet->pStakerStatus->IsActive();
 }
 
 CAmount WalletModel::getBalance(const CCoinControl* coinControl) const
@@ -132,6 +141,15 @@ void WalletModel::updateStatus()
         emit encryptionStatusChanged(newEncryptionStatus);
 }
 
+bool WalletModel::isWalletUnlocked() const {
+    EncryptionStatus status = getEncryptionStatus();
+    return status == Unencrypted || status == Unlocked;
+}
+
+bool WalletModel::isWalletLocked() const {
+    return getEncryptionStatus() == Locked;
+}
+
 void WalletModel::pollBalanceChanged()
 {
     // Get required locks upfront. This avoids the GUI from getting stuck on
@@ -204,6 +222,11 @@ void WalletModel::checkBalanceChanged()
                             newZerocoinBalance, newUnconfirmedZerocoinBalance, newImmatureZerocoinBalance,
                             newWatchOnlyBalance, newWatchUnconfBalance, newWatchImmatureBalance);
     }
+}
+
+void WalletModel::setWalletDefaultFee(CAmount fee)
+{
+    payTxFee = CFeeRate(fee);
 }
 
 void WalletModel::updateTransaction()
@@ -327,8 +350,8 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
         CReserveKey* keyChange = transaction.getPossibleKeyChange();
 
 
-        if (recipients[0].useSwiftTX && total > GetSporkValue(SPORK_5_MAX_VALUE) * COIN) {
-            emit message(tr("Send Coins"), tr("SwiftX doesn't support sending values that high yet. Transactions are currently limited to %1 WGR.").arg(GetSporkValue(SPORK_5_MAX_VALUE)),
+        if (recipients[0].useSwiftTX && total > sporkManager.GetSporkValue(SPORK_5_MAX_VALUE) * COIN) {
+            emit message(tr("Send Coins"), tr("SwiftX doesn't support sending values that high yet. Transactions are currently limited to %1 WGR.").arg(sporkManager.GetSporkValue(SPORK_5_MAX_VALUE)),
                 CClientUIInterface::MSG_ERROR);
             return TransactionCreationFailed;
         }
@@ -336,8 +359,8 @@ WalletModel::SendCoinsReturn WalletModel::prepareTransaction(WalletModelTransact
         bool fCreated = wallet->CreateTransaction(vecSend, *newTx, *keyChange, nFeeRequired, strFailReason, coinControl, recipients[0].inputType, recipients[0].useSwiftTX);
         transaction.setTransactionFee(nFeeRequired);
 
-        if (recipients[0].useSwiftTX && newTx->GetValueOut() > GetSporkValue(SPORK_5_MAX_VALUE) * COIN) {
-            emit message(tr("Send Coins"), tr("SwiftX doesn't support sending values that high yet. Transactions are currently limited to %1 WGR.").arg(GetSporkValue(SPORK_5_MAX_VALUE)),
+        if (recipients[0].useSwiftTX && newTx->GetValueOut() > sporkManager.GetSporkValue(SPORK_5_MAX_VALUE) * COIN) {
+            emit message(tr("Send Coins"), tr("SwiftX doesn't support sending values that high yet. Transactions are currently limited to %1 WGR.").arg(sporkManager.GetSporkValue(SPORK_5_MAX_VALUE)),
                 CClientUIInterface::MSG_ERROR);
             return TransactionCreationFailed;
         }
@@ -365,6 +388,12 @@ WalletModel::SendCoinsReturn WalletModel::sendCoins(WalletModelTransaction& tran
 
     if (isAnonymizeOnlyUnlocked()) {
         return AnonymizeOnlyUnlocked;
+    }
+
+    // Double check tx before do anything
+    CValidationState state;
+    if(!CheckTransaction(*transaction.getTransaction(), true, true, state, true)){
+        return TransactionCommitFailed;
     }
 
     {
@@ -415,6 +444,24 @@ WalletModel::SendCoinsReturn WalletModel::sendCoins(WalletModelTransaction& tran
     checkBalanceChanged(); // update balance immediately, otherwise there could be a short noticeable delay until pollBalanceChanged hits
 
     return SendCoinsReturn(OK);
+}
+
+const CWalletTx* WalletModel::getTx(uint256 id){
+    return wallet->GetWalletTx(id);
+}
+
+bool WalletModel::isCoinStake(QString id){
+    uint256 hashTx;
+    hashTx.SetHex(id.toStdString());
+    const CWalletTx* tx = getTx(hashTx);
+    return tx->IsCoinStake();
+}
+
+bool WalletModel::isCoinStakeMine(QString id){
+    uint256 hashTx;
+    hashTx.SetHex(id.toStdString());
+    const CWalletTx* tx = getTx(hashTx);
+    return tx->IsCoinStake() && wallet->IsMine(tx->vin[0]);
 }
 
 WalletModel::SendCoinsReturn WalletModel::prepareBetTransaction(WalletModelTransaction& transaction, CAmount amount, const std::string& eventId, const std::string& teamToWin)
@@ -485,6 +532,99 @@ WalletModel::SendCoinsReturn WalletModel::placeBet(WalletModelTransaction& trans
     checkBalanceChanged(); // update balance immediately, otherwise there could be a short noticeable delay until pollBalanceChanged hits
 
     return SendCoinsReturn(OK);
+}
+
+
+bool WalletModel::createZwgrSpend(
+        CWalletTx &wtxNew,
+        std::vector<CZerocoinMint> &vMintsSelected,
+        bool fMintChange,
+        bool fMinimizeChange,
+        CZerocoinSpendReceipt &receipt,
+        std::list<std::pair<CBitcoinAddress*, CAmount>> outputs,
+        std::string changeAddress
+        ){
+
+    CBitcoinAddress *changeAdd = (!changeAddress.empty()) ? new CBitcoinAddress(changeAddress) : nullptr;
+    CAmount value = 0;
+    for(std::pair<CBitcoinAddress*, CAmount> pair : outputs){
+        value += pair.second;
+    }
+
+    if (wallet->IsLocked()) {
+        receipt.SetStatus("Error: Wallet locked, unable to create transaction!", ZWGR_WALLET_LOCKED);
+        return false;
+    }
+
+    CReserveKey reserveKey(wallet);
+    std::vector<CDeterministicMint> vNewMints;
+    if (!wallet->CreateZerocoinSpendTransaction(
+            value,
+            wtxNew,
+            reserveKey,
+            receipt,
+            vMintsSelected,
+            vNewMints,
+            false, // No more mints
+            fMinimizeChange,
+            outputs,
+            changeAdd
+    )) {
+        return false;
+    }
+
+    // Double check tx before do anything
+    CValidationState state;
+    return CheckTransaction(wtxNew, true, true, state, true);
+}
+
+bool WalletModel::sendZwgr(
+        std::vector<CZerocoinMint> &vMintsSelected,
+        bool fMintChange,
+        bool fMinimizeChange,
+        CZerocoinSpendReceipt &receipt,
+        std::list<std::pair<CBitcoinAddress*, CAmount>> outputs,
+        std::string changeAddress
+        ){
+
+    CBitcoinAddress *changeAdd = (!changeAddress.empty()) ? new CBitcoinAddress(changeAddress) : nullptr;
+    CAmount value = 0;
+    for(std::pair<CBitcoinAddress*, CAmount> pair : outputs){
+        value += pair.second;
+    }
+
+    CWalletTx wtxNew;
+    return wallet->SpendZerocoin(
+            value,
+            wtxNew,
+            receipt,
+            vMintsSelected,
+            false, // No more mints
+            fMinimizeChange,
+            outputs,
+            changeAdd
+    );
+
+}
+
+bool WalletModel::convertBackZwgr(
+        CAmount value,
+        std::vector<CZerocoinMint> &vMintsSelected,
+        bool fMintChange,
+        bool fMinimizeChange,
+        CZerocoinSpendReceipt &receipt
+){
+    CWalletTx wtxNew;
+    return wallet->SpendZerocoin(
+            value,
+            wtxNew,
+            receipt,
+            vMintsSelected,
+            false, // No more mints
+            fMinimizeChange,
+            std::list<std::pair<CBitcoinAddress*, CAmount>>(),
+            nullptr
+    );
 }
 
 OptionsModel* WalletModel::getOptionsModel()
@@ -748,14 +888,48 @@ bool WalletModel::getPubKey(const CKeyID& address, CPubKey& vchPubKeyOut) const
     return wallet->GetPubKey(address, vchPubKeyOut);
 }
 
+int64_t WalletModel::getCreationTime() const {
+    return wallet->nTimeFirstKey;
+}
+
+int64_t WalletModel::getKeyCreationTime(const CPubKey& key){
+    return pwalletMain->GetKeyCreationTime(key);
+}
+
+int64_t WalletModel::getKeyCreationTime(const CBitcoinAddress& address){
+    if(this->isMine(address)) {
+        return pwalletMain->GetKeyCreationTime(address);
+    }
+    return 0;
+}
+
+CBitcoinAddress WalletModel::getNewAddress(std::string label) const{
+    if (!wallet->IsLocked())
+        wallet->TopUpKeyPool();
+
+    // Generate a new key that is added to wallet
+    CPubKey newKey;
+    if (!wallet->GetKeyFromPool(newKey)){
+        wallet->TopUpKeyPool(100);
+
+        if (wallet->GetKeyPoolSize() < 100)
+            throw std::runtime_error("Error refreshing keypool.");
+    }
+    CKeyID keyID = newKey.GetID();
+
+    pwalletMain->SetAddressBook(keyID, label, "receive");
+    return CBitcoinAddress(keyID);
+}
+
 // returns a list of COutputs from COutPoints
 void WalletModel::getOutputs(const std::vector<COutPoint>& vOutpoints, std::vector<COutput>& vOutputs)
 {
     LOCK2(cs_main, wallet->cs_wallet);
     for (const COutPoint& outpoint : vOutpoints) {
         if (!wallet->mapWallet.count(outpoint.hash)) continue;
-        int nDepth = wallet->mapWallet[outpoint.hash].GetDepthInMainChain();
-        if (nDepth < 0) continue;
+        bool fConflicted;
+        const int nDepth = wallet->mapWallet[outpoint.hash].GetDepthAndMempool(fConflicted);
+        if (nDepth < 0 || fConflicted) continue;
         COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, nDepth, true);
         vOutputs.push_back(out);
     }
@@ -780,8 +954,9 @@ void WalletModel::listCoins(std::map<QString, std::vector<COutput> >& mapCoins) 
     // add locked coins
     for (const COutPoint& outpoint : vLockedCoins) {
         if (!wallet->mapWallet.count(outpoint.hash)) continue;
-        int nDepth = wallet->mapWallet[outpoint.hash].GetDepthInMainChain();
-        if (nDepth < 0) continue;
+        bool fConflicted;
+        int nDepth = wallet->mapWallet[outpoint.hash].GetDepthAndMempool(fConflicted);
+        if (nDepth < 0 || fConflicted) continue;
         COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, nDepth, true);
         if (outpoint.n < out.tx->vout.size() && wallet->IsMine(out.tx->vout[outpoint.n]) == ISMINE_SPENDABLE)
             vCoins.push_back(out);
@@ -860,4 +1035,18 @@ bool WalletModel::saveReceiveRequest(const std::string& sAddress, const int64_t 
 bool WalletModel::isMine(CBitcoinAddress address)
 {
     return IsMine(*wallet, address.Get());
+}
+
+bool WalletModel::isMine(const QString& addressStr)
+{
+    CBitcoinAddress address(addressStr.toStdString());
+    return IsMine(*wallet, address.Get());
+}
+
+std::string WalletModel::resetMintZerocoin(){
+    return wallet->ResetMintZerocoin();
+}
+
+std::string WalletModel::resetSpentZerocoin(){
+    return wallet->ResetSpentZerocoin();
 }

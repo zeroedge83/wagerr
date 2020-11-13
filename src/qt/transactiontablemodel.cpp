@@ -271,6 +271,10 @@ int TransactionTableModel::columnCount(const QModelIndex& parent) const
     return columns.length();
 }
 
+int TransactionTableModel::size() const{
+    return priv->size();
+}
+
 QString TransactionTableModel::formatTxStatus(const TransactionRecord* wtx) const
 {
     QString status;
@@ -383,8 +387,8 @@ QString TransactionTableModel::formatTxType(const TransactionRecord* wtx) const
         return tr("Chain Game Entry");
     case TransactionRecord::BetWin:
         return tr("Bet Payout");
-
     default:
+        std::cout << "Type: " << wtx->type << std::endl;
         return QString();
     }
 }
@@ -679,7 +683,7 @@ QModelIndex TransactionTableModel::index(int row, int column, const QModelIndex&
     Q_UNUSED(parent);
     TransactionRecord* data = priv->index(row);
     if (data) {
-        return createIndex(row, column, priv->index(row));
+        return createIndex(row, column, data);
     }
     return QModelIndex();
 }

@@ -237,6 +237,7 @@ extern UniValue listaddressgroupings(const UniValue& params, bool fHelp);
 extern UniValue listaccounts(const UniValue& params, bool fHelp);
 extern UniValue listsinceblock(const UniValue& params, bool fHelp);
 extern UniValue gettransaction(const UniValue& params, bool fHelp);
+extern UniValue abandontransaction(const UniValue& params, bool fHelp);
 extern UniValue backupwallet(const UniValue& params, bool fHelp);
 extern UniValue keypoolrefill(const UniValue& params, bool fHelp);
 extern UniValue walletpassphrase(const UniValue& params, bool fHelp);
@@ -271,22 +272,32 @@ extern UniValue getzwgrseed(const UniValue& params, bool fHelp);
 extern UniValue generatemintlist(const UniValue& params, bool fHelp);
 extern UniValue searchdzwgr(const UniValue& params, bool fHelp);
 extern UniValue dzwgrstate(const UniValue& params, bool fHelp);
-extern UniValue clearspendcache(const UniValue& params, bool fHelp);
 extern UniValue enableautomintaddress(const UniValue& params, bool fHelp);
 extern UniValue createautomintaddress(const UniValue& params, bool fHelp);
 
 /** Betting related RPC methods **/
 extern UniValue listevents(const UniValue& params, bool fHelp);
+extern UniValue listeventsdebug(const UniValue& params, bool fHelp);
 extern UniValue listchaingamesevents(const UniValue& params, bool fHelp);
 extern UniValue listchaingamesbets(const UniValue& params, bool fHelp);
 extern UniValue getchaingamesinfo(const UniValue& params, bool fHelp);
 extern UniValue placechaingamesbet(const UniValue& params, bool fHelp);
-extern UniValue geteventsliability(const UniValue& params, bool fHelp);
+extern UniValue geteventliability(const UniValue& params, bool fHelp);
 extern UniValue placebet(const UniValue& params, bool fHelp);
+extern UniValue placeparlaybet(const UniValue& params, bool fHelp);
+extern UniValue placeqgdicebet(const UniValue& params, bool fHelp);
 extern UniValue listbets(const UniValue& params, bool fHelp);
 extern UniValue getmappingid(const UniValue& params, bool fHelp);
 extern UniValue getmappingname(const UniValue& params, bool fHelp);
 extern UniValue getbet(const UniValue& params, bool fHelp);
+extern UniValue listbetsdb(const UniValue& params, bool fHelp);
+extern UniValue getallbets(const UniValue& params, bool fHelp);
+extern UniValue getmybets(const UniValue& params, bool fHelp);
+extern UniValue getallqgbets(const UniValue& params, bool fHelp);
+extern UniValue getmyqgbets(const UniValue& params, bool fHelp);
+extern UniValue getpayoutinfo(const UniValue& params, bool fHelp);
+extern UniValue getpayoutinfosince(const UniValue& params, bool fHelp);
+extern UniValue getbetbytxid(const UniValue& params, bool fHelp);
 
 extern UniValue getrawtransaction(const UniValue& params, bool fHelp); // in rpc/rawtransaction.cpp
 extern UniValue listunspent(const UniValue& params, bool fHelp);
@@ -298,7 +309,7 @@ extern UniValue decodescript(const UniValue& params, bool fHelp);
 extern UniValue signrawtransaction(const UniValue& params, bool fHelp);
 extern UniValue sendrawtransaction(const UniValue& params, bool fHelp);
 extern UniValue createrawzerocoinstake(const UniValue& params, bool fHelp);
-extern UniValue createrawzerocoinpublicspend(const UniValue& params, bool fHelp);
+extern UniValue createrawzerocoinspend(const UniValue& params, bool fHelp);
 
 extern UniValue findserial(const UniValue& params, bool fHelp); // in rpc/blockchain.cpp
 extern UniValue getblockcount(const UniValue& params, bool fHelp);

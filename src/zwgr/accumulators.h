@@ -19,25 +19,6 @@ class CBlockIndex;
 
 std::map<libzerocoin::CoinDenomination, int> GetMintMaturityHeight();
 
-/**
- * Calculate the acc witness for a single coin.
- * @return true if the witness was calculated well
- */
-
-bool CalculateAccumulatorWitnessFor(
-        const libzerocoin::ZerocoinParams* params,
-        int startingHeight,
-        int maxCalculationRange,
-        libzerocoin::CoinDenomination den,
-        const CBloomFilter& filter,
-        libzerocoin::Accumulator& accumulator,
-        libzerocoin::AccumulatorWitness& witness,
-        int& nMintsAdded,
-        std::string& strError,
-        std::list<CBigNum>& ret,
-        int &heightStop
-);
-
 bool GenerateAccumulatorWitness(
         const libzerocoin::PublicCoin &coin,
         libzerocoin::Accumulator& accumulator,
@@ -61,7 +42,6 @@ uint32_t ParseChecksum(uint256 nChecksum, libzerocoin::CoinDenomination denomina
 uint32_t GetChecksum(const CBigNum &bnValue);
 int GetChecksumHeight(uint32_t nChecksum, libzerocoin::CoinDenomination denomination);
 bool InvalidCheckpointRange(int nHeight);
-bool ValidateAccumulatorCheckpoint(const CBlock& block, CBlockIndex* pindex, AccumulatorMap& mapAccumulators);
 
 
 // Exceptions

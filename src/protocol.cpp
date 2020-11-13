@@ -34,10 +34,7 @@ static const char* ppszTypeName[] =
         "mn quorum",
         "mn announce",
         "mn ping",
-        "dstx",
-        "pubcoins",
-        "genwit",
-        "accvalue"
+        "dstx"
     };
 
 CMessageHeader::CMessageHeader()
@@ -143,7 +140,7 @@ bool CInv::IsKnownType() const
 }
 
 bool CInv::IsMasterNodeType() const{
- 	return (type >= 6);
+     return (type >= 6);
 }
 
 const char* CInv::GetCommand() const

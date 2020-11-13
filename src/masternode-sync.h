@@ -7,6 +7,8 @@
 #ifndef MASTERNODE_SYNC_H
 #define MASTERNODE_SYNC_H
 
+#include <atomic>
+
 #define MASTERNODE_SYNC_INITIAL 0
 #define MASTERNODE_SYNC_SPORKS 1
 #define MASTERNODE_SYNC_LIST 2
@@ -40,6 +42,9 @@ public:
     int64_t lastFailure;
     int nCountFailures;
 
+    std::atomic<int64_t> lastProcess;
+    std::atomic<bool> fBlockchainSynced;
+
     // sum of all counts
     int sumMasternodeList;
     int sumMasternodeWinner;
@@ -72,8 +77,10 @@ public:
     void Reset();
     void Process();
     bool IsSynced();
+    bool NotCompleted();
+    bool IsSporkListSynced();
+    bool IsMasternodeListSynced();
     bool IsBlockchainSynced();
-    bool IsMasternodeListSynced() { return RequestedMasternodeAssets > MASTERNODE_SYNC_LIST; }
     void ClearFulfilledRequest();
 };
 

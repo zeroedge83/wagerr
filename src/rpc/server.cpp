@@ -214,7 +214,7 @@ std::string CRPCTable::help(std::string strCommand) const
             rpcfn_type pfn = pcmd->actor;
             if (setDone.insert(pfn).second)
                 (*pfn)(params, true);
-        } catch (std::exception& e) {
+        } catch (const std::exception& e) {
             // Help text is returned in an exception
             std::string strHelp = std::string(e.what());
             if (strCommand == "") {
@@ -391,13 +391,23 @@ static const CRPCCommand vRPCCommands[] =
         {"wagerr", "spork", &spork, true, true, false},
         {"wagerr", "getpoolinfo", &getpoolinfo, true, true, false},
         {"wagerr", "listevents", &listevents, false, false, false},
+        {"wagerr", "listeventsdebug", &listeventsdebug, false, false, false},
         {"wagerr", "listchaingamesevents", &listchaingamesevents, false, false, false},
         {"wagerr", "listchaingamesbets", &listchaingamesbets, false, false, false},
         {"wagerr", "getchaingamesinfo", &getchaingamesinfo, false, false, false},
         {"wagerr", "placechaingamesbet", &placechaingamesbet, false, false, true},
-        {"wagerr", "geteventsliability", &geteventsliability, false, false, true},
+        {"wagerr", "geteventliability", &geteventliability, false, false, false},
         {"wagerr", "getmappingid", &getmappingid, false, false, true},
         {"wagerr", "getmappingname", &getmappingname, false, false, true},
+        {"wallet", "listbetsdb", &listbetsdb, false, false, false},
+        {"wallet", "getallbets", &getallbets, false, false, false},
+        {"wallet", "getmybets", &getmybets, false, false, true},
+        {"wallet", "placeqgdicebet", &placeqgdicebet, false, false, true},
+        {"wallet", "getallqgbets", &getallqgbets,false, false, false},
+        {"wallet", "getmyqgbets", &getmyqgbets,false, false, true},
+        {"wagerr", "getpayoutinfo", &getpayoutinfo, false, false, false},
+        {"wagerr", "getpayoutinfosince", &getpayoutinfosince, false, false, false},
+        {"wagerr", "getbetbytxid", &getbetbytxid, false, false, false},
 
 
 #ifdef ENABLE_WALLET
@@ -424,6 +434,7 @@ static const CRPCCommand vRPCCommands[] =
         {"wallet", "getstakingstatus", &getstakingstatus, false, false, true},
         {"wallet", "getstakesplitthreshold", &getstakesplitthreshold, false, false, true},
         {"wallet", "gettransaction", &gettransaction, false, false, true},
+        {"wallet", "abandontransaction", &abandontransaction, false, false, true},
         {"wallet", "getunconfirmedbalance", &getunconfirmedbalance, false, false, true},
         {"wallet", "getwalletinfo", &getwalletinfo, false, false, true},
         {"wallet", "importprivkey", &importprivkey, true, false, true},
@@ -445,6 +456,7 @@ static const CRPCCommand vRPCCommands[] =
         {"wallet", "move", &movecmd, false, false, true},
         {"wallet", "multisend", &multisend, false, false, true},
         {"wallet", "placebet", &placebet, false, false, true},
+        {"wallet", "placeparlaybet", &placeparlaybet, false, false, true},
         {"wallet", "sendfrom", &sendfrom, false, false, true},
         {"wallet", "sendmany", &sendmany, false, false, true},
         {"wallet", "sendtoaddress", &sendtoaddress, false, false, true},
@@ -458,7 +470,7 @@ static const CRPCCommand vRPCCommands[] =
         {"wallet", "walletpassphrase", &walletpassphrase, true, false, true},
 
         {"zerocoin", "createrawzerocoinstake", &createrawzerocoinstake, false, false, true},
-        {"zerocoin", "createrawzerocoinpublicspend", &createrawzerocoinpublicspend, false, false, true},
+        {"zerocoin", "createrawzerocoinspend", &createrawzerocoinspend, false, false, true},
         {"zerocoin", "getzerocoinbalance", &getzerocoinbalance, false, false, true},
         {"zerocoin", "listmintedzerocoins", &listmintedzerocoins, false, false, true},
         {"zerocoin", "listspentzerocoins", &listspentzerocoins, false, false, true},
@@ -479,7 +491,6 @@ static const CRPCCommand vRPCCommands[] =
         {"zerocoin", "generatemintlist", &generatemintlist, false, false, true},
         {"zerocoin", "searchdzwgr", &searchdzwgr, false, false, true},
         {"zerocoin", "dzwgrstate", &dzwgrstate, false, false, true},
-        {"zerocoin", "clearspendcache", &clearspendcache, false, false, true}
 
 #endif // ENABLE_WALLET
 };
@@ -594,7 +605,7 @@ static UniValue JSONRPCExecOne(const UniValue& req)
         rpc_result = JSONRPCReplyObj(result, NullUniValue, jreq.id);
     } catch (const UniValue& objError) {
         rpc_result = JSONRPCReplyObj(NullUniValue, objError, jreq.id);
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         rpc_result = JSONRPCReplyObj(NullUniValue,
             JSONRPCError(RPC_PARSE_ERROR, e.what()), jreq.id);
     }
@@ -623,7 +634,7 @@ UniValue CRPCTable::execute(const std::string &strMethod, const UniValue &params
     try {
         // Execute
         return pcmd->actor(params, false);
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         throw JSONRPCError(RPC_MISC_ERROR, e.what());
     }
 
