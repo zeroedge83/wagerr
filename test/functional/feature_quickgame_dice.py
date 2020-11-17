@@ -77,7 +77,7 @@ class QgDiceTest(BitcoinTestFramework):
 
         self.players.append(self.nodes[2].getnewaddress())
 
-        for i in range(249):
+        for i in range(299):
             self.nodes[0].generate(1)
 
         for i in range(20):
