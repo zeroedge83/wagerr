@@ -63,12 +63,28 @@ UniValue getmappingid(const UniValue& params, bool fHelp)
         CBettingDB::BytesToDbType(it->Value(), mapping);
         LogPrintf("wagerr", "%s - mapping - it=[%d,%d] nId=[%d] nMType=[%s] [%s]\n", __func__, key.nMType, key.nId, key.nId, CMappingDB::ToTypeName(key.nMType), mapping.sName);
         if (!mappingFound) {
+            
+         // As an Oracle Node, just by calling this RPC method it would
+            // create a local mapping if no existing mapping was found. This
+            // could lead to possible mismatches between local state and
+            // network state. While the Oracle Node is run by the Wagerr team,
+            // comment out the this code as we handle it outside the core code
+            // (for now).
+            throw std::runtime_error("Currently no mapping index exists for the mapping index you provided.");
+
+            // TODO: When Oracle Nodes become decentralized we need to revisit
+            //       this caching code and how it can be reworked for a
+            //       decentralized network all submitting new mappings
+            //       simultaneously that may clash and invalidating a local
+            //       cache if the network (source of truth) says it's wrong.
+
+            /*                
             if (mapping.sName == name) {
                 mappings.push_back(Pair("mapping-id", (uint64_t) key.nId));
                 mappings.push_back(Pair("exists", true));
                 mappings.push_back(Pair("mapping-index", mIndex));
                 mappingFound = true;
-            }
+            }*/
         }
     }
     if (mappingFound)
@@ -126,6 +142,57 @@ UniValue getmappingname(const UniValue& params, bool fHelp)
 
     result.push_back(mapping);
 
+    return result;
+}
+
+/**
+ * Display mapping in json object array
+ * If its not found return an error message.
+ *
+ * @param params The RPC params consisting of an map index name.
+ * @param fHelp  Help text
+ * @return
+ */
+UniValue getmappingjson(const UniValue &params, bool fHelp)
+{
+    if (fHelp || (params.size() < 1))
+        throw std::runtime_error(
+                "getmappingjson\n"
+                "\nGet a mapping array from the specified map index.\n"
+
+                "\nResult:\n"
+                "[\n"
+                "  {\n"
+                "    \"mapping name\": \"xxx\",  (string) The mapping name.\n"
+                "    \"exists\": \"xxx\", (boolean) mapping transaction created or not\n"
+                "    \"mapping-index\": \"xxx\" (string) The index that was searched.\n"
+                "  }\n"
+                "]\n"
+
+                "\nExamples:\n" +
+                HelpExampleCli("getmappingjson", "") + HelpExampleRpc("getmappingjson", ""));
+
+    const std::string mIndex{params[0].get_str()};
+    const MappingType type{CMappingDB::FromTypeName(mIndex)};
+    UniValue result{UniValue::VARR};
+
+    if (static_cast<int>(type) < 0 || CMappingDB::ToTypeName(type) != mIndex) {
+        throw std::runtime_error("No mapping exist for the mapping index you provided.");
+    }
+
+    auto it = bettingsView->mappings->NewIterator();
+    MappingKey key{};
+    for (it->Seek(CBettingDB::DbTypeToBytes(MappingKey{type, 0})); it->Valid() && (CBettingDB::BytesToDbType(it->Key(), key), key.nMType == type); it->Next()) {
+        UniValue mappings{UniValue::VOBJ};
+        CMappingDB mapping{};
+        CBettingDB::BytesToDbType(it->Value(), mapping);
+        mappings.push_back(Pair("mapping-id", (uint64_t) key.nId));
+        mappings.push_back(Pair("mapping-name", mapping.sName));
+        mappings.push_back(Pair("exists", true));
+        mappings.push_back(Pair("mapping-index", mIndex));
+
+    result.push_back(mappings);
+    }
     return result;
 }
 
